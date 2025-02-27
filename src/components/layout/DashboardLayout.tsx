@@ -1,5 +1,5 @@
-import React, { ReactNode, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import React, { ReactNode, useState, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   Shield, 
@@ -24,12 +24,18 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   
   // Determine user type from URL
   const isSuperAdmin = location.pathname.includes('/superadmin');
   const isAdmin = location.pathname.includes('/admin') && !isSuperAdmin;
   const isClient = location.pathname.includes('/client');
+  
+  // Navigation handler to avoid Link issues
+  const handleNavigation = useCallback((href: string) => {
+    console.log(`Navigating to ${href}, current user:`, user);
+    navigate(href);
+  }, [navigate, user]);
   
   // Handle logout
   const handleLogout = () => {
@@ -84,10 +90,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                 const IconComponent = item.icon;
                 const isActive = location.pathname === item.href;
                 return (
-                  <Link
+                  <button
                     key={item.name}
-                    to={item.href}
-                    className={`group flex items-center px-2 py-2 text-base font-medium rounded-md ${
+                    type="button"
+                    onClick={() => handleNavigation(item.href)}
+                    className={`group flex items-center px-2 py-2 w-full text-left text-base font-medium rounded-md ${
                       isActive
                         ? 'bg-gray-100 text-gray-900'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -121,10 +128,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                   const IconComponent = item.icon;
                   const isActive = location.pathname === item.href;
                   return (
-                    <Link
+                    <button
                       key={item.name}
-                      to={item.href}
-                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
+                      type="button"
+                      onClick={() => handleNavigation(item.href)}
+                      className={`group flex items-center px-2 py-2 w-full text-left text-sm font-medium rounded-md ${
                         isActive
                           ? 'bg-gray-100 text-gray-900'
                           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
