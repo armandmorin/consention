@@ -1,21 +1,104 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { DEFAULT_BRANDING } from '../../config/constants';
-import { Save, RefreshCw } from 'lucide-react';
+import { Save, RefreshCw, DatabaseIcon, CloudIcon } from 'lucide-react';
+import axios from 'axios';
+import { API_BASE_URL } from '../../config/constants';
 
 const GlobalBranding: React.FC = () => {
-  const [branding, setBranding] = useState({
-    primaryColor: DEFAULT_BRANDING.primaryColor,
-    secondaryColor: DEFAULT_BRANDING.secondaryColor,
-    accentColor: DEFAULT_BRANDING.accentColor,
-    textColor: DEFAULT_BRANDING.textColor,
-    backgroundColor: DEFAULT_BRANDING.backgroundColor,
-    logo: null as File | null,
-    logoPreview: '',
+  // Load saved branding from server or localStorage, or use defaults
+  const [branding, setBranding] = useState(() => {
+    return {
+      primaryColor: DEFAULT_BRANDING.primaryColor,
+      secondaryColor: DEFAULT_BRANDING.secondaryColor,
+      accentColor: DEFAULT_BRANDING.accentColor,
+      textColor: DEFAULT_BRANDING.textColor,
+      backgroundColor: DEFAULT_BRANDING.backgroundColor,
+      logo: null as File | null,
+      logoPreview: '',
+    };
   });
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  
+  // Load branding settings and apply them when component mounts
+  useEffect(() => {
+    const loadBranding = async () => {
+      setLoading(true);
+      setError('');
+      
+      try {
+        // First try to load from server API
+        const response = await axios.get(`${API_BASE_URL}/api/settings/global-branding`);
+        
+        if (response.data && response.data.settings) {
+          console.log('Loaded branding from server:', response.data.settings);
+          const serverBranding = response.data.settings;
+          
+          setBranding(prev => ({
+            ...prev,
+            ...serverBranding,
+            logo: null as File | null
+          }));
+          
+          // Also update localStorage
+          localStorage.setItem('globalBranding', JSON.stringify(serverBranding));
+        } else {
+          // Fallback to localStorage if server has no settings
+          const savedBranding = localStorage.getItem('globalBranding');
+          if (savedBranding) {
+            try {
+              const parsed = JSON.parse(savedBranding);
+              console.log('Loaded branding from localStorage:', parsed);
+              setBranding(prev => ({
+                ...prev,
+                ...parsed,
+                logo: null as File | null
+              }));
+            } catch (e) {
+              console.error('Error parsing saved global branding from localStorage:', e);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error loading global branding from server:', err);
+        setError('Failed to load branding settings from server');
+        
+        // Fallback to localStorage
+        const savedBranding = localStorage.getItem('globalBranding');
+        if (savedBranding) {
+          try {
+            const parsed = JSON.parse(savedBranding);
+            console.log('Loaded branding from localStorage (after server error):', parsed);
+            setBranding(prev => ({
+              ...prev,
+              ...parsed,
+              logo: null as File | null
+            }));
+          } catch (e) {
+            console.error('Error parsing saved global branding from localStorage:', e);
+          }
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadBranding();
+  }, []);
+  
+  // Apply branding settings whenever they change
+  useEffect(() => {
+    // Apply the current branding settings to CSS variables
+    document.documentElement.style.setProperty('--global-primary-color', branding.primaryColor);
+    document.documentElement.style.setProperty('--global-secondary-color', branding.secondaryColor);
+    
+    // Log applied settings
+    console.log('Applied global branding settings:', branding);
+  }, [branding.primaryColor, branding.secondaryColor]);
 
   const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -37,7 +120,8 @@ const GlobalBranding: React.FC = () => {
   };
 
   const handleReset = () => {
-    setBranding({
+    // Reset to defaults
+    const defaultBranding = {
       primaryColor: DEFAULT_BRANDING.primaryColor,
       secondaryColor: DEFAULT_BRANDING.secondaryColor,
       accentColor: DEFAULT_BRANDING.accentColor,
@@ -45,17 +129,64 @@ const GlobalBranding: React.FC = () => {
       backgroundColor: DEFAULT_BRANDING.backgroundColor,
       logo: null,
       logoPreview: '',
-    });
+    };
+    
+    setBranding(defaultBranding);
+    
+    // Clear saved settings
+    localStorage.removeItem('globalBranding');
+    console.log('Global branding settings reset to defaults');
+    
+    // Show success message
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    // Simulate API call
-    setTimeout(() => {
+    setError('');
+    
+    try {
+      // Prepare branding object for saving
+      const brandingToSave = { ...branding };
+      delete brandingToSave.logo; // Can't store File object
+      
+      // First save to server API
+      try {
+        const response = await axios.post(`${API_BASE_URL}/api/settings/global-branding`, {
+          settings: brandingToSave
+        });
+        
+        console.log('Global branding settings saved to server:', response.data);
+      } catch (serverError) {
+        console.error('Error saving to server:', serverError);
+        setError('Could not save to server, but settings will be saved locally');
+      }
+      
+      // Also save to localStorage as backup
+      localStorage.setItem('globalBranding', JSON.stringify(brandingToSave));
+      console.log('Global branding settings saved to localStorage:', brandingToSave);
+      
+      // Update the brandSettings global variable that's used by other components
+      localStorage.setItem('brandSettings', JSON.stringify({
+        logo: brandingToSave.logoPreview,
+        primaryColor: brandingToSave.primaryColor,
+        secondaryColor: brandingToSave.secondaryColor,
+      }));
+      
+      // Apply the branding settings to the document
+      document.documentElement.style.setProperty('--global-primary-color', branding.primaryColor);
+      document.documentElement.style.setProperty('--global-secondary-color', branding.secondaryColor);
+      
+      // Show success feedback
       setSaving(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    }, 1000);
+    } catch (error) {
+      console.error('Error saving global branding settings:', error);
+      setError('Failed to save branding settings. Please try again.');
+      setSaving(false);
+    }
   };
 
   return (
@@ -64,6 +195,19 @@ const GlobalBranding: React.FC = () => {
         <div className="lg:col-span-2">
           <div className="bg-white shadow rounded-lg p-6">
             <h2 className="text-lg font-medium text-gray-900 mb-4">Branding Settings</h2>
+            
+            {loading && (
+              <div className="mb-4 flex items-center text-blue-500">
+                <div className="animate-spin mr-2 h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                <span>Loading settings...</span>
+              </div>
+            )}
+            
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700">
+                {error}
+              </div>
+            )}
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">

@@ -16,7 +16,13 @@ const AdminManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState<Admin | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '', 
+    company: ''
+  });
 
   // Mock data for admins
   const admins: Admin[] = [
@@ -43,6 +49,25 @@ const AdminManagement: React.FC = () => {
     // Handle deleting admin logic
     setShowDeleteModal(false);
     setSelectedAdmin(null);
+  };
+  
+  const handleEditAdmin = () => {
+    // In a real app, this would call an API to update the admin
+    console.log('Updating admin:', selectedAdmin?.id, editForm);
+    
+    // Close the modal and reset state
+    setShowEditModal(false);
+    setSelectedAdmin(null);
+  };
+  
+  const startEditAdmin = (admin: Admin) => {
+    setSelectedAdmin(admin);
+    setEditForm({
+      name: admin.name,
+      email: admin.email,
+      company: admin.company
+    });
+    setShowEditModal(true);
   };
 
   return (
@@ -138,6 +163,7 @@ const AdminManagement: React.FC = () => {
                       <button
                         type="button"
                         className="text-blue-600 hover:text-blue-900 mr-3"
+                        onClick={() => startEditAdmin(admin)}
                       >
                         <Edit className="h-5 w-5" />
                       </button>
@@ -243,6 +269,89 @@ const AdminManagement: React.FC = () => {
                   type="button"
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                   onClick={() => setShowAddModal(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Admin Modal */}
+      {showEditModal && selectedAdmin && (
+        <div className="fixed z-10 inset-0 overflow-y-auto">
+          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                      Edit Admin: {selectedAdmin.name}
+                    </h3>
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <label htmlFor="edit-name" className="block text-sm font-medium text-gray-700">
+                          Name
+                        </label>
+                        <input
+                          type="text"
+                          name="name"
+                          id="edit-name"
+                          value={editForm.name}
+                          onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                          className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="edit-email" className="block text-sm font-medium text-gray-700">
+                          Email (read-only)
+                        </label>
+                        <input
+                          type="email"
+                          name="email"
+                          id="edit-email"
+                          value={editForm.email}
+                          disabled
+                          className="mt-1 bg-gray-100 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="edit-company" className="block text-sm font-medium text-gray-700">
+                          Company
+                        </label>
+                        <input
+                          type="text"
+                          name="company"
+                          id="edit-company"
+                          value={editForm.company}
+                          onChange={(e) => setEditForm({...editForm, company: e.target.value})}
+                          className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm"
+                  onClick={handleEditAdmin}
+                >
+                  Save Changes
+                </button>
+                <button
+                  type="button"
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setSelectedAdmin(null);
+                  }}
                 >
                   Cancel
                 </button>
