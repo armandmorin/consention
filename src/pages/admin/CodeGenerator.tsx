@@ -128,19 +128,19 @@ const CodeGenerator: React.FC = () => {
                   <div className="bg-gray-50 rounded-md p-4">
                     <h5 className="text-sm font-medium text-gray-900 mb-1">Shopify</h5>
                     <p className="text-xs text-gray-600">
-                      Go to Online Store > Themes > Edit HTML/CSS > theme.liquid and add the code just before the closing &lt;/head&gt; tag.
+                      Go to Online Store &gt; Themes &gt; Edit HTML/CSS &gt; theme.liquid and add the code just before the closing &lt;/head&gt; tag.
                     </p>
                   </div>
                   <div className="bg-gray-50 rounded-md p-4">
                     <h5 className="text-sm font-medium text-gray-900 mb-1">Wix</h5>
                     <p className="text-xs text-gray-600">
-                      Go to Settings > Advanced > Custom Code and add the code to the Head section.
+                      Go to Settings &gt; Advanced &gt; Custom Code and add the code to the Head section.
                     </p>
                   </div>
                   <div className="bg-gray-50 rounded-md p-4">
                     <h5 className="text-sm font-medium text-gray-900 mb-1">Squarespace</h5>
                     <p className="text-xs text-gray-600">
-                      Go to Settings > Advanced > Code Injection and add the code to the Header section.
+                      Go to Settings &gt; Advanced &gt; Code Injection and add the code to the Header section.
                     </p>
                   </div>
                 </div>
