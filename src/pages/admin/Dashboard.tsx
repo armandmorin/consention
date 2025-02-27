@@ -1,8 +1,18 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { BarChart2, Users, Code, ArrowUp, ArrowDown } from 'lucide-react';
 
 const AdminDashboard: React.FC = () => {
+  const location = useLocation();
+
+  // Add debugging for session persistence
+  useEffect(() => {
+    console.log("AdminDashboard mounted, checking localStorage");
+    const storedUser = localStorage.getItem('user');
+    console.log("User in localStorage:", storedUser ? JSON.parse(storedUser) : "No user found");
+  }, [location.pathname]);
+  
   return (
     <DashboardLayout title="Dashboard">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">

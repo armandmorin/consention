@@ -119,10 +119,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Logout function
   const logout = () => {
+    console.log('Logout function called - clearing user state and removing from localStorage');
+    // Important: Set user to null BEFORE removing from localStorage
     setUser(null);
     // Only remove auth-related localStorage items
     localStorage.removeItem('user');
-    navigate('/login');
+    // Navigate AFTER state updates
+    setTimeout(() => navigate('/login'), 0);
   };
 
   // Signup function

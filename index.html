@@ -4,10 +4,26 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M0 0h24v24H0z' fill='none'/%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z' fill='%234f46e5'/%3E%3C/svg%3E" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <title>Consent Management Dashboard</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- Fix for auth persistence issues -->
+    <script>
+      // Add debugging helper to monitor localStorage
+      const originalSetItem = localStorage.setItem;
+      const originalRemoveItem = localStorage.removeItem;
+      
+      localStorage.setItem = function(key, value) {
+        console.log(`localStorage.setItem('${key}', '${value?.length > 50 ? value.substring(0, 50) + "..." : value}')`, new Error().stack);
+        originalSetItem.apply(this, arguments);
+      };
+      
+      localStorage.removeItem = function(key) {
+        console.log(`localStorage.removeItem('${key}')`, new Error().stack);
+        originalRemoveItem.apply(this, arguments);
+      };
+    </script>
   </body>
 </html>
