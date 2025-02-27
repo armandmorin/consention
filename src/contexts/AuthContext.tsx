@@ -62,13 +62,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           
           // Combine auth and profile data
           if (profile) {
+            console.log('Profile fetched during initial session check:', profile);
+            
+            // Explicit check for superadmin role
+            let userRole: UserRole = 'client';
+            if (profile.role === 'superadmin') {
+              console.log('User is a superadmin!');
+              userRole = 'superadmin';
+            } else if (profile.role === 'admin') {
+              userRole = 'admin';
+            }
+            
             setUser({
               id: session.user.id,
               email: session.user.email || '',
               name: profile.name || '',
-              role: profile.role || 'client',
+              role: userRole,
               organization: profile.organization
             });
+            
+            console.log('User role set to:', userRole);
           }
         }
       } catch (error) {
@@ -97,13 +110,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
           
           if (profile) {
+            console.log('Profile fetched during auth state change:', profile);
+            
+            // Explicit check for superadmin role
+            let userRole: UserRole = 'client';
+            if (profile.role === 'superadmin') {
+              console.log('User is a superadmin!');
+              userRole = 'superadmin';
+            } else if (profile.role === 'admin') {
+              userRole = 'admin';
+            }
+            
             setUser({
               id: session.user.id,
               email: session.user.email || '',
               name: profile.name || '',
-              role: profile.role || 'client',
+              role: userRole,
               organization: profile.organization
             });
+            
+            console.log('User role set to:', userRole);
           }
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
@@ -135,6 +161,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (data.session) {
         try {
           // Get user profile
+          // FIXED QUERY - The previous syntax might have issues
+          console.log('Fetching profile for user ID:', data.user.id);
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('*')
@@ -187,20 +215,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
           
+          // Debug output to see the exact profile data
+          console.log('Retrieved profile:', profile);
+          
+          // Explicit check for superadmin role
+          let userRole: UserRole = 'client';
+          if (profile.role === 'superadmin') {
+            console.log('User is a superadmin!');
+            userRole = 'superadmin';
+          } else if (profile.role === 'admin') {
+            userRole = 'admin';
+          }
+          
           const userWithProfile = {
             id: data.user.id,
             email: data.user.email || '',
             name: profile.name || '',
-            role: profile.role as UserRole,
+            role: userRole,
             organization: profile.organization
           };
           
+          console.log('User role set to:', userRole);
           setUser(userWithProfile);
           
           // Redirect based on role
-          if (userWithProfile.role === 'superadmin') {
+          if (userRole === 'superadmin') {
             navigate('/superadmin');
-          } else if (userWithProfile.role === 'admin') {
+          } else if (userRole === 'admin') {
             navigate('/admin');
           } else {
             navigate('/client');
