@@ -1,5 +1,6 @@
 import React, { ReactNode, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   Shield, 
   Menu, 
@@ -22,11 +23,19 @@ interface DashboardLayoutProps {
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   
   // Determine user type from URL
   const isSuperAdmin = location.pathname.includes('/superadmin');
   const isAdmin = location.pathname.includes('/admin') && !isSuperAdmin;
   const isClient = location.pathname.includes('/client');
+  
+  // Handle logout
+  const handleLogout = () => {
+    console.log('Logging out from DashboardLayout');
+    logout();
+  };
   
   // Navigation items based on user type
   const navigation = isSuperAdmin 
@@ -78,6 +87,15 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                   <Link
                     key={item.name}
                     to={item.href}
+                    onClick={(e) => {
+                      // Refresh user data on navigation
+                      const storedUser = localStorage.getItem('user');
+                      if (!storedUser) {
+                        e.preventDefault();
+                        console.log('No user found in localStorage, redirecting to login');
+                        navigate('/login');
+                      }
+                    }}
                     className={`group flex items-center px-2 py-2 text-base font-medium rounded-md ${
                       isActive
                         ? 'bg-gray-100 text-gray-900'
@@ -115,6 +133,15 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                     <Link
                       key={item.name}
                       to={item.href}
+                      onClick={(e) => {
+                        // Refresh user data on navigation
+                        const storedUser = localStorage.getItem('user');
+                        if (!storedUser) {
+                          e.preventDefault();
+                          console.log('No user found in localStorage, redirecting to login');
+                          navigate('/login');
+                        }
+                      }}
                       className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
                         isActive
                           ? 'bg-gray-100 text-gray-900'
@@ -161,19 +188,28 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
               </button>
 
               {/* Profile dropdown */}
-              <div className="ml-3 relative">
-                <div>
+              <div className="ml-3 relative flex items-center">
+                <div className="flex items-center">
+                  <div className="mr-2">
+                    <button
+                      type="button"
+                      className="max-w-xs bg-white flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      id="user-menu"
+                      aria-expanded="false"
+                      aria-haspopup="true"
+                    >
+                      <span className="sr-only">Open user menu</span>
+                      <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+                        <User className="h-5 w-5 text-gray-500" />
+                      </div>
+                    </button>
+                  </div>
                   <button
-                    type="button"
-                    className="max-w-xs bg-white flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    id="user-menu"
-                    aria-expanded="false"
-                    aria-haspopup="true"
+                    onClick={handleLogout}
+                    className="ml-2 inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                   >
-                    <span className="sr-only">Open user menu</span>
-                    <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                      <User className="h-5 w-5 text-gray-500" />
-                    </div>
+                    <LogOut className="h-4 w-4 mr-1" />
+                    Logout
                   </button>
                 </div>
               </div>
