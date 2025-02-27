@@ -88,7 +88,7 @@ const CodeGenerator: React.FC = () => {
             </div>
             <div className="px-4 py-5 sm:p-6">
               <p className="text-sm text-gray-500 mb-4">
-                Add this code snippet to your website's <code><head></code> section to implement the consent popup.
+                Add this code snippet to your website's <code>&lt;head&gt;</code> section to implement the consent popup.
               </p>
               <div id="consent-script" className="relative">
                 <ConsentScript
@@ -109,7 +109,7 @@ const CodeGenerator: React.FC = () => {
                 <div className="bg-gray-50 rounded-md p-4">
                   <ol className="list-decimal list-inside text-sm text-gray-600 space-y-2">
                     <li>Copy the code snippet above.</li>
-                    <li>Paste it into the <code><head></code> section of your website's HTML.</li>
+                    <li>Paste it into the <code>&lt;head&gt;</code> section of your website's HTML.</li>
                     <li>The consent popup will automatically appear to visitors who haven't provided consent yet.</li>
                     <li>You can customize the appearance and behavior of the popup using the settings panel.</li>
                   </ol>
@@ -128,7 +128,7 @@ const CodeGenerator: React.FC = () => {
                   <div className="bg-gray-50 rounded-md p-4">
                     <h5 className="text-sm font-medium text-gray-900 mb-1">Shopify</h5>
                     <p className="text-xs text-gray-600">
-                      Go to Online Store > Themes > Edit HTML/CSS > theme.liquid and add the code just before the closing </head> tag.
+                      Go to Online Store > Themes > Edit HTML/CSS > theme.liquid and add the code just before the closing &lt;/head&gt; tag.
                     </p>
                   </div>
                   <div className="bg-gray-50 rounded-md p-4">
