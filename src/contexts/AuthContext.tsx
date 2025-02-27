@@ -105,7 +105,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Logout function
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('user');
+    // Clear all localStorage items to prevent any persistence issues
+    localStorage.clear();
     navigate('/login');
   };
 
