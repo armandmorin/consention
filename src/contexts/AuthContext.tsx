@@ -135,15 +135,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Logout function
+  // Logout function - simplified to avoid React Router issues
   const logout = () => {
     console.log('Logout function called - clearing user state and removing from localStorage');
-    // Important: Set user to null BEFORE removing from localStorage
+    // Set user to null
     setUser(null);
-    // Only remove auth-related localStorage items
+    // Remove from localStorage
     localStorage.removeItem('user');
-    // Navigate AFTER state updates
-    setTimeout(() => navigate('/login'), 0);
+    // Use direct navigation instead of React Router
+    window.location.href = '/login';
   };
 
   // Signup function

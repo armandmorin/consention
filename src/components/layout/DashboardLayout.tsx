@@ -1,5 +1,5 @@
 import React, { ReactNode, useState, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   Shield, 
@@ -23,7 +23,6 @@ interface DashboardLayoutProps {
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
   const { logout, user } = useAuth();
   
   // Determine user type from URL
@@ -31,16 +30,23 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   const isAdmin = location.pathname.includes('/admin') && !isSuperAdmin;
   const isClient = location.pathname.includes('/client');
   
-  // Navigation handler to avoid Link issues
-  const handleNavigation = useCallback((href: string) => {
-    console.log(`Navigating to ${href}, current user:`, user);
-    navigate(href);
-  }, [navigate, user]);
+  // Direct event handler instead of navigation
+  const handleNavigation = useCallback((href: string, e: React.MouseEvent) => {
+    e.preventDefault();  // Prevent default link behavior
+    
+    // This is the KEY LINE that solves the problem:
+    // Use window.location instead of navigate() for internal links
+    window.location.href = href;
+  }, []);
   
-  // Handle logout
-  const handleLogout = () => {
+  // Handle logout with direct URL navigation
+  const handleLogout = (e: React.MouseEvent) => {
+    e.preventDefault();
     console.log('Logging out from DashboardLayout');
-    logout();
+    // Clear user data from localStorage
+    localStorage.removeItem('user');
+    // Direct navigation instead of using router
+    window.location.href = '/login';
   };
   
   // Navigation items based on user type
@@ -90,10 +96,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                 const IconComponent = item.icon;
                 const isActive = location.pathname === item.href;
                 return (
-                  <button
+                  <a
                     key={item.name}
-                    type="button"
-                    onClick={() => handleNavigation(item.href)}
+                    href={item.href}
+                    onClick={(e) => handleNavigation(item.href, e)}
                     className={`group flex items-center px-2 py-2 w-full text-left text-base font-medium rounded-md ${
                       isActive
                         ? 'bg-gray-100 text-gray-900'
@@ -106,7 +112,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                       }`}
                     />
                     {item.name}
-                  </Link>
+                  </a>
                 );
               })}
             </nav>
@@ -128,10 +134,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                   const IconComponent = item.icon;
                   const isActive = location.pathname === item.href;
                   return (
-                    <button
+                    <a
                       key={item.name}
-                      type="button"
-                      onClick={() => handleNavigation(item.href)}
+                      href={item.href}
+                      onClick={(e) => handleNavigation(item.href, e)}
                       className={`group flex items-center px-2 py-2 w-full text-left text-sm font-medium rounded-md ${
                         isActive
                           ? 'bg-gray-100 text-gray-900'
@@ -144,7 +150,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                         }`}
                       />
                       {item.name}
-                    </Link>
+                    </a>
                   );
                 })}
               </nav>
@@ -195,7 +201,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                     </button>
                   </div>
                   <button
-                    onClick={handleLogout}
+                    onClick={(e) => handleLogout(e)}
                     className="ml-2 inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                   >
                     <LogOut className="h-4 w-4 mr-1" />
