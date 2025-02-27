@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import ConsentScript from '../../components/consent/ConsentScript';
 import ConsentPopup from '../../components/consent/ConsentPopup';
-import { POPUP_POSITIONS, POPUP_THEMES } from '../../config/constants';
+import { DEFAULT_BRANDING, POPUP_POSITIONS, POPUP_THEMES } from '../../config/constants';
 import { Copy, Check, Globe, Code } from 'lucide-react';
 
 const CodeGenerator: React.FC = () => {
@@ -11,7 +11,7 @@ const CodeGenerator: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   
-  // Mock client data
+  // Mock client data with default settings from constants
   const client = {
     id: clientId || 'client123',
     name: 'Example Client',
@@ -19,15 +19,20 @@ const CodeGenerator: React.FC = () => {
     settings: {
       position: 'bottom',
       theme: 'light',
-      primaryColor: '#3B82F6',
-      secondaryColor: '#1E40AF',
-      accentColor: '#60A5FA',
-      textColor: '#1F2937',
-      backgroundColor: '#F9FAFB',
+      ...DEFAULT_BRANDING
     }
   };
 
-  const [settings, setSettings] = useState(client.settings);
+  // Initialize settings with defaults to prevent undefined errors
+  const [settings, setSettings] = useState({
+    position: 'bottom',
+    theme: 'light',
+    primaryColor: DEFAULT_BRANDING.primaryColor,
+    secondaryColor: DEFAULT_BRANDING.secondaryColor,
+    accentColor: DEFAULT_BRANDING.accentColor,
+    textColor: DEFAULT_BRANDING.textColor,
+    backgroundColor: DEFAULT_BRANDING.backgroundColor,
+  });
 
   const handleCopyCode = () => {
     const scriptElement = document.getElementById('consent-script');
@@ -94,13 +99,13 @@ const CodeGenerator: React.FC = () => {
                 <ConsentScript
                   clientId={client.id}
                   domain={client.domain}
-                  position={settings.position}
-                  theme={settings.theme}
-                  primaryColor={settings.primaryColor}
-                  secondaryColor={settings.secondaryColor}
-                  accentColor={settings.accentColor}
-                  textColor={settings.textColor}
-                  backgroundColor={settings.backgroundColor}
+                  position={settings.position || "bottom"}
+                  theme={settings.theme || "light"}
+                  primaryColor={settings.primaryColor || "#3B82F6"}
+                  secondaryColor={settings.secondaryColor || "#1E40AF"}
+                  accentColor={settings.accentColor || "#60A5FA"}
+                  textColor={settings.textColor || "#1F2937"}
+                  backgroundColor={settings.backgroundColor || "#F9FAFB"}
                 />
               </div>
               
@@ -340,13 +345,13 @@ const CodeGenerator: React.FC = () => {
                 <p className="text-gray-500">This is your website content</p>
               </div>
               <ConsentPopup
-                position={settings.position as any}
-                theme={settings.theme as any}
-                primaryColor={settings.primaryColor}
-                secondaryColor={settings.secondaryColor}
-                accentColor={settings.accentColor}
-                textColor={settings.textColor}
-                backgroundColor={settings.backgroundColor}
+                position={(settings.position || "bottom") as any}
+                theme={(settings.theme || "light") as any}
+                primaryColor={settings.primaryColor || "#3B82F6"}
+                secondaryColor={settings.secondaryColor || "#1E40AF"}
+                accentColor={settings.accentColor || "#60A5FA"}
+                textColor={settings.textColor || "#1F2937"}
+                backgroundColor={settings.backgroundColor || "#F9FAFB"}
                 companyName={client.name}
                 onAcceptAll={() => {}}
                 onRejectAll={() => {}}

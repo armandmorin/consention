@@ -3,19 +3,39 @@ import React from 'react';
 interface ConsentScriptProps {
   clientId: string;
   domain: string;
-  brandingSettings: {
-    primaryColor: string;
-    secondaryColor: string;
-    accentColor: string;
-    textColor: string;
-    backgroundColor: string;
-    position: string;
-    theme: string;
-    logo?: string;
-  };
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  textColor: string;
+  backgroundColor: string;
+  position: string;
+  theme: string;
+  logo?: string;
 }
 
-const ConsentScript: React.FC<ConsentScriptProps> = ({ clientId, domain, brandingSettings }) => {
+const ConsentScript: React.FC<ConsentScriptProps> = ({ 
+  clientId, 
+  domain, 
+  primaryColor,
+  secondaryColor,
+  accentColor,
+  textColor,
+  backgroundColor,
+  position,
+  theme,
+  logo 
+}) => {
+  // Combine settings for the script
+  const brandingSettings = {
+    primaryColor,
+    secondaryColor,
+    accentColor,
+    textColor,
+    backgroundColor,
+    position,
+    theme,
+    logo
+  };
   const scriptCode = `
 <script>
   (function() {
