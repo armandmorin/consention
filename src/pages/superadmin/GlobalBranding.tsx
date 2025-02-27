@@ -14,6 +14,7 @@ const GlobalBranding: React.FC = () => {
       backgroundColor: DEFAULT_BRANDING.backgroundColor,
       logo: null as File | null,
       logoPreview: '',
+      appDomain: '',
     };
   });
 
@@ -75,6 +76,14 @@ const GlobalBranding: React.FC = () => {
       [name]: value,
     });
   };
+  
+  const handleDomainChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { value } = e.target;
+    setBranding({
+      ...branding,
+      appDomain: value,
+    });
+  };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -97,6 +106,7 @@ const GlobalBranding: React.FC = () => {
       backgroundColor: DEFAULT_BRANDING.backgroundColor,
       logo: null,
       logoPreview: '',
+      appDomain: '',
     };
     
     setBranding(defaultBranding);
@@ -201,7 +211,27 @@ const GlobalBranding: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="appDomain" className="block text-sm font-medium text-gray-700 mb-1">
+                  App Domain
+                </label>
+                <div className="flex items-center">
+                  <input
+                    type="text"
+                    id="appDomain"
+                    name="appDomain"
+                    value={branding.appDomain}
+                    onChange={handleDomainChange}
+                    placeholder="https://your-app-domain.com"
+                    className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  The domain where your consent script will be hosted. Used to generate code snippets.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 <div>
                   <label htmlFor="primaryColor" className="block text-sm font-medium text-gray-700 mb-1">
                     Primary Color
@@ -344,6 +374,20 @@ const GlobalBranding: React.FC = () => {
         <div>
           <div className="bg-white shadow rounded-lg p-6">
             <h2 className="text-lg font-medium text-gray-900 mb-4">Preview</h2>
+            
+            {branding.appDomain && (
+              <div className="mb-4 p-4 bg-gray-50 rounded-md">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Installation Code</h3>
+                <code className="block p-2 bg-gray-100 rounded border text-xs overflow-x-auto whitespace-pre">
+                  {`<script src="${branding.appDomain.replace(/\/$/, '')}/consent.js"></script>
+<script>
+  window.ConsentHub.init({
+    clientId: "YOUR_CLIENT_ID"
+  });
+</script>`}
+                </code>
+              </div>
+            )}
             <div 
               className="border rounded-lg overflow-hidden" 
               style={{ backgroundColor: branding.backgroundColor }}
