@@ -133,34 +133,91 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       
       if (data.session) {
-        // Get user profile
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', data.user.id)
-          .single();
+        try {
+          // Get user profile
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.user.id)
+            .single();
+            
+          if (profileError) {
+            console.error('Error fetching user profile:', profileError);
+            
+            // If profile doesn't exist, create it
+            if (profileError.code === 'PGRST116') {
+              console.log('Profile not found, creating one...');
+              
+              // Default to client role if creating on the fly
+              const defaultRole: UserRole = 'client';
+              
+              const { data: newProfile, error: insertError } = await supabase
+                .from('profiles')
+                .insert([
+                  {
+                    id: data.user.id,
+                    email: data.user.email || '',
+                    name: data.user.user_metadata?.name || email.split('@')[0],
+                    role: defaultRole
+                  }
+                ])
+                .select()
+                .single();
+                
+              if (insertError) {
+                console.error('Error creating profile:', insertError);
+                throw insertError;
+              }
+              
+              const userWithNewProfile = {
+                id: data.user.id,
+                email: data.user.email || '',
+                name: newProfile.name,
+                role: newProfile.role as UserRole,
+                organization: newProfile.organization
+              };
+              
+              setUser(userWithNewProfile);
+              
+              // Redirect based on role
+              navigate('/client');
+              return;
+            } else {
+              throw profileError;
+            }
+          }
           
-        if (profileError) {
-          console.error('Error fetching user profile:', profileError);
-          throw profileError;
-        }
-        
-        const userWithProfile = {
-          id: data.user.id,
-          email: data.user.email || '',
-          name: profile.name || '',
-          role: profile.role as UserRole,
-          organization: profile.organization
-        };
-        
-        setUser(userWithProfile);
-        
-        // Redirect based on role
-        if (userWithProfile.role === 'superadmin') {
-          navigate('/superadmin');
-        } else if (userWithProfile.role === 'admin') {
-          navigate('/admin');
-        } else {
+          const userWithProfile = {
+            id: data.user.id,
+            email: data.user.email || '',
+            name: profile.name || '',
+            role: profile.role as UserRole,
+            organization: profile.organization
+          };
+          
+          setUser(userWithProfile);
+          
+          // Redirect based on role
+          if (userWithProfile.role === 'superadmin') {
+            navigate('/superadmin');
+          } else if (userWithProfile.role === 'admin') {
+            navigate('/admin');
+          } else {
+            navigate('/client');
+          }
+        } catch (profileErr) {
+          // Fallback for severe errors - still log in but with minimal profile
+          console.error('Critical profile error:', profileErr);
+          
+          // Create minimal user object from auth data
+          const minimalUser = {
+            id: data.user.id,
+            email: data.user.email || '',
+            name: data.user.user_metadata?.name || email.split('@')[0],
+            role: 'client' as UserRole
+          };
+          
+          setUser(minimalUser);
           navigate('/client');
         }
       }
@@ -219,7 +276,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       if (data.user) {
         // Create profile record in profiles table
-        const { error: profileError } = await supabase
+        const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .insert([
             {
@@ -229,13 +286,53 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               organization,
               email
             }
-          ]);
+          ])
+          .select()
+          .single();
           
         if (profileError) {
           console.error('Error creating user profile:', profileError);
-          throw profileError;
+          
+          // Check if this is just a duplicate profile error
+          if (profileError.code === '23505') { // unique_violation
+            console.log('Profile already exists, retrieving existing profile');
+            
+            // Get the existing profile
+            const { data: existingProfile, error: fetchError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', data.user.id)
+              .single();
+              
+            if (fetchError) {
+              console.error('Error fetching existing profile:', fetchError);
+              throw fetchError;
+            }
+            
+            // Use the existing profile
+            const existingUser: User = {
+              id: data.user.id,
+              email,
+              name: existingProfile.name,
+              role: existingProfile.role,
+              organization: existingProfile.organization
+            };
+            
+            setUser(existingUser);
+            
+            // Redirect based on role
+            if (existingUser.role === 'admin') {
+              navigate('/admin');
+            } else {
+              navigate('/client');
+            }
+            return;
+          } else {
+            throw profileError;
+          }
         }
         
+        // Profile created successfully
         const newUser: User = {
           id: data.user.id,
           email,
