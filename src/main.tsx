@@ -3,8 +3,9 @@ import ReactDOM from 'react-dom/client'
 import './index.css'
 import App from './App'
 
-// Disable strict mode to prevent double mount/unmount cycles
-// This can cause auth state to be lost during development
+// Using StrictMode is fine now that we have the Vercel routing configuration
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <App />
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
 )

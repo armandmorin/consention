@@ -1,5 +1,5 @@
 import React, { ReactNode, useState, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   Shield, 
@@ -23,6 +23,7 @@ interface DashboardLayoutProps {
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { logout, user } = useAuth();
   
   // Determine user type from URL
@@ -30,23 +31,17 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   const isAdmin = location.pathname.includes('/admin') && !isSuperAdmin;
   const isClient = location.pathname.includes('/client');
   
-  // Direct event handler instead of navigation
+  // Use React Router navigation for internal links
   const handleNavigation = useCallback((href: string, e: React.MouseEvent) => {
     e.preventDefault();  // Prevent default link behavior
-    
-    // This is the KEY LINE that solves the problem:
-    // Use window.location instead of navigate() for internal links
-    window.location.href = href;
-  }, []);
+    navigate(href);
+  }, [navigate]);
   
-  // Handle logout with direct URL navigation
+  // Use the logout function from AuthContext
   const handleLogout = (e: React.MouseEvent) => {
     e.preventDefault();
     console.log('Logging out from DashboardLayout');
-    // Clear user data from localStorage
-    localStorage.removeItem('user');
-    // Direct navigation instead of using router
-    window.location.href = '/login';
+    logout();
   };
   
   // Navigation items based on user type
