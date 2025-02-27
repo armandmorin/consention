@@ -31,18 +31,7 @@ import GlobalAnalytics from './pages/superadmin/GlobalAnalytics';
 import ClientDashboard from './pages/client/Dashboard';
 import ClientAnalytics from './pages/client/Analytics';
 
-// For persistence debugging
-const sessionCheckMiddleware = (Component: React.ComponentType<any>) => {
-  return (props: any) => {
-    // Add debug information in console
-    console.log('Rendering protected route component', {
-      user: localStorage.getItem('user'),
-      path: window.location.pathname
-    });
-    
-    return <Component {...props} />;
-  };
-};
+// Removed middleware entirely to simplify rendering flow
 
 function App() {
   return (
@@ -56,61 +45,61 @@ function App() {
           {/* SuperAdmin routes */}
           <Route path="/superadmin" element={
             <SuperAdminRoute>
-              {sessionCheckMiddleware(SuperAdminDashboard)()}
+              <SuperAdminDashboard />
             </SuperAdminRoute>
           } />
           <Route path="/superadmin/admins" element={
             <SuperAdminRoute>
-              {sessionCheckMiddleware(AdminManagement)()}
+              <AdminManagement />
             </SuperAdminRoute>
           } />
           <Route path="/superadmin/branding" element={
             <SuperAdminRoute>
-              {sessionCheckMiddleware(GlobalBranding)()}
+              <GlobalBranding />
             </SuperAdminRoute>
           } />
           <Route path="/superadmin/analytics" element={
             <SuperAdminRoute>
-              {sessionCheckMiddleware(GlobalAnalytics)()}
+              <GlobalAnalytics />
             </SuperAdminRoute>
           } />
           
           {/* Admin routes */}
           <Route path="/admin" element={
             <AdminRoute>
-              {sessionCheckMiddleware(AdminDashboard)()}
+              <AdminDashboard />
             </AdminRoute>
           } />
           <Route path="/admin/clients" element={
             <AdminRoute>
-              {sessionCheckMiddleware(ClientManagement)()}
+              <ClientManagement />
             </AdminRoute>
           } />
           <Route path="/admin/branding" element={
             <AdminRoute>
-              {sessionCheckMiddleware(BrandingSettings)()}
+              <BrandingSettings />
             </AdminRoute>
           } />
           <Route path="/admin/code" element={
             <AdminRoute>
-              {sessionCheckMiddleware(CodeGenerator)()}
+              <CodeGenerator />
             </AdminRoute>
           } />
           <Route path="/admin/analytics" element={
             <AdminRoute>
-              {sessionCheckMiddleware(AdminAnalytics)()}
+              <AdminAnalytics />
             </AdminRoute>
           } />
           
           {/* Client routes */}
           <Route path="/client" element={
             <ProtectedRoute>
-              {sessionCheckMiddleware(ClientDashboard)()}
+              <ClientDashboard />
             </ProtectedRoute>
           } />
           <Route path="/client/analytics" element={
             <ProtectedRoute>
-              {sessionCheckMiddleware(ClientAnalytics)()}
+              <ClientAnalytics />
             </ProtectedRoute>
           } />
           

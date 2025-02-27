@@ -10,15 +10,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // Add additional check to verify user data on route changes
-  useEffect(() => {
-    // Check if we have user in localStorage but not in state
-    const storedUser = localStorage.getItem('user');
-    if (!user && storedUser) {
-      console.log('Found user in localStorage but not in state, refreshing page');
-      window.location.reload();
-    }
-  }, [user, location.pathname]);
+  // Removed potentially problematic reload effect
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;

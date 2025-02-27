@@ -61,11 +61,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Check if user is already logged in
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+        console.log('User loaded from localStorage on AuthContext init');
+      } else {
+        console.log('No user found in localStorage');
+      }
+    } catch (error) {
+      console.error('Error loading user from localStorage:', error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   // Login function
@@ -82,7 +90,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       if (foundUser && password === 'password') {
         setUser(foundUser);
-        localStorage.setItem('user', JSON.stringify(foundUser));
+        
+        // Store user in localStorage with explicit error handling
+        try {
+          localStorage.setItem('user', JSON.stringify(foundUser));
+          console.log('User successfully stored in localStorage after login');
+        } catch (storageError) {
+          console.error('Failed to store user in localStorage:', storageError);
+        }
         
         // Redirect based on role
         if (foundUser.role === 'superadmin') {
@@ -105,8 +120,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Logout function
   const logout = () => {
     setUser(null);
-    // Clear all localStorage items to prevent any persistence issues
-    localStorage.clear();
+    // Only remove auth-related localStorage items
+    localStorage.removeItem('user');
     navigate('/login');
   };
 
@@ -137,7 +152,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // For now, we'll just simulate success
       
       setUser(newUser);
-      localStorage.setItem('user', JSON.stringify(newUser));
+      // Store user in localStorage with explicit error handling
+      try {
+        localStorage.setItem('user', JSON.stringify(newUser));
+        console.log('New user successfully stored in localStorage after signup');
+      } catch (storageError) {
+        console.error('Failed to store new user in localStorage:', storageError);
+      }
       
       // Redirect based on role
       if (role === 'admin') {

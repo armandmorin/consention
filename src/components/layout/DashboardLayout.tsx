@@ -87,15 +87,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                   <Link
                     key={item.name}
                     to={item.href}
-                    onClick={(e) => {
-                      // Refresh user data on navigation
-                      const storedUser = localStorage.getItem('user');
-                      if (!storedUser) {
-                        e.preventDefault();
-                        console.log('No user found in localStorage, redirecting to login');
-                        navigate('/login');
-                      }
-                    }}
                     className={`group flex items-center px-2 py-2 text-base font-medium rounded-md ${
                       isActive
                         ? 'bg-gray-100 text-gray-900'
@@ -133,15 +124,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
                     <Link
                       key={item.name}
                       to={item.href}
-                      onClick={(e) => {
-                        // Refresh user data on navigation
-                        const storedUser = localStorage.getItem('user');
-                        if (!storedUser) {
-                          e.preventDefault();
-                          console.log('No user found in localStorage, redirecting to login');
-                          navigate('/login');
-                        }
-                      }}
                       className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
                         isActive
                           ? 'bg-gray-100 text-gray-900'
