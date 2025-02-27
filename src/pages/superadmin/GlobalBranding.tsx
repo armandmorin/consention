@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { DEFAULT_BRANDING } from '../../config/constants';
-import { Save, RefreshCw, DatabaseIcon, CloudIcon } from 'lucide-react';
-import axios from 'axios';
-import { API_BASE_URL } from '../../config/constants';
+import { Save, RefreshCw } from 'lucide-react';
 
 const GlobalBranding: React.FC = () => {
   // Load saved branding from server or localStorage, or use defaults
@@ -24,55 +22,19 @@ const GlobalBranding: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Load branding settings and apply them when component mounts
+  // Load branding settings from localStorage and apply them when component mounts
   useEffect(() => {
-    const loadBranding = async () => {
+    const loadBranding = () => {
       setLoading(true);
       setError('');
       
       try {
-        // First try to load from server API
-        const response = await axios.get(`${API_BASE_URL}/api/settings/global-branding`);
-        
-        if (response.data && response.data.settings) {
-          console.log('Loaded branding from server:', response.data.settings);
-          const serverBranding = response.data.settings;
-          
-          setBranding(prev => ({
-            ...prev,
-            ...serverBranding,
-            logo: null as File | null
-          }));
-          
-          // Also update localStorage
-          localStorage.setItem('globalBranding', JSON.stringify(serverBranding));
-        } else {
-          // Fallback to localStorage if server has no settings
-          const savedBranding = localStorage.getItem('globalBranding');
-          if (savedBranding) {
-            try {
-              const parsed = JSON.parse(savedBranding);
-              console.log('Loaded branding from localStorage:', parsed);
-              setBranding(prev => ({
-                ...prev,
-                ...parsed,
-                logo: null as File | null
-              }));
-            } catch (e) {
-              console.error('Error parsing saved global branding from localStorage:', e);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error loading global branding from server:', err);
-        setError('Failed to load branding settings from server');
-        
-        // Fallback to localStorage
+        // Load from localStorage
         const savedBranding = localStorage.getItem('globalBranding');
         if (savedBranding) {
           try {
             const parsed = JSON.parse(savedBranding);
-            console.log('Loaded branding from localStorage (after server error):', parsed);
+            console.log('Loaded branding from localStorage:', parsed);
             setBranding(prev => ({
               ...prev,
               ...parsed,
@@ -80,8 +42,14 @@ const GlobalBranding: React.FC = () => {
             }));
           } catch (e) {
             console.error('Error parsing saved global branding from localStorage:', e);
+            setError('Error loading saved branding settings');
           }
+        } else {
+          console.log('No saved branding found, using defaults');
         }
+      } catch (err) {
+        console.error('Error loading global branding:', err);
+        setError('Failed to load branding settings');
       } finally {
         setLoading(false);
       }
@@ -142,7 +110,7 @@ const GlobalBranding: React.FC = () => {
     setTimeout(() => setSaved(false), 3000);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setSaving(true);
     setError('');
     
@@ -151,19 +119,7 @@ const GlobalBranding: React.FC = () => {
       const brandingToSave = { ...branding };
       delete brandingToSave.logo; // Can't store File object
       
-      // First save to server API
-      try {
-        const response = await axios.post(`${API_BASE_URL}/api/settings/global-branding`, {
-          settings: brandingToSave
-        });
-        
-        console.log('Global branding settings saved to server:', response.data);
-      } catch (serverError) {
-        console.error('Error saving to server:', serverError);
-        setError('Could not save to server, but settings will be saved locally');
-      }
-      
-      // Also save to localStorage as backup
+      // Save to localStorage
       localStorage.setItem('globalBranding', JSON.stringify(brandingToSave));
       console.log('Global branding settings saved to localStorage:', brandingToSave);
       
