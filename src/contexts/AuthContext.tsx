@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 // Define user roles
 export type UserRole = 'superadmin' | 'admin' | 'client';
@@ -28,70 +30,90 @@ interface AuthContextType {
 // Create the auth context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock user data for development
-const mockUsers: User[] = [
-  {
-    id: '1',
-    email: 'superadmin@example.com',
-    name: 'Super Admin',
-    role: 'superadmin'
-  },
-  {
-    id: '2',
-    email: 'admin@example.com',
-    name: 'Admin User',
-    role: 'admin',
-    organization: 'Example Corp'
-  },
-  {
-    id: '3',
-    email: 'client@example.com',
-    name: 'Client User',
-    role: 'client',
-    organization: 'Client Company'
-  }
-];
-
 // Auth provider component
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Initialize user directly from localStorage
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const storedUser = localStorage.getItem('user');
-      return storedUser ? JSON.parse(storedUser) : null;
-    } catch (e) {
-      console.error('Error initializing user from localStorage:', e);
-      return null;
-    }
-  });
-  const [loading, setLoading] = useState<boolean>(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Keep user state in sync with localStorage
+  // Initialize user from Supabase session
   useEffect(() => {
-    console.log('AuthContext initialized with user:', user ? `${user.name} (${user.role})` : 'none');
-    
-    // Set up storage event listener to keep auth in sync across tabs
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'user') {
-        if (e.newValue) {
-          try {
-            const newUser = JSON.parse(e.newValue);
-            console.log('User updated in another tab, syncing state');
-            setUser(newUser);
-          } catch (error) {
-            console.error('Error parsing user from storage event:', error);
+    // Check current session
+    const checkSession = async () => {
+      try {
+        setLoading(true);
+        
+        // Get current session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session) {
+          // Get user profile data from profiles table
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+            
+          if (profileError) {
+            console.error('Error fetching user profile:', profileError);
+            throw profileError;
           }
-        } else {
-          console.log('User removed in another tab, logging out');
-          setUser(null);
+          
+          // Combine auth and profile data
+          if (profile) {
+            setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+              name: profile.name || '',
+              role: profile.role || 'client',
+              organization: profile.organization
+            });
+          }
         }
+      } catch (error) {
+        console.error('Session check error:', error);
+      } finally {
+        setLoading(false);
       }
     };
     
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    checkSession();
+    
+    // Set up auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          // Get user profile data
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+            
+          if (profileError) {
+            console.error('Error fetching user profile:', profileError);
+            return;
+          }
+          
+          if (profile) {
+            setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+              name: profile.name || '',
+              role: profile.role || 'client',
+              organization: profile.organization
+            });
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        }
+      }
+    );
+    
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Login function
@@ -100,50 +122,76 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Sign in with Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
       
-      // Find user in mock data
-      const foundUser = mockUsers.find(u => u.email === email);
+      if (error) {
+        throw error;
+      }
       
-      if (foundUser && password === 'password') {
-        setUser(foundUser);
-        
-        // Store user in localStorage with explicit error handling
-        try {
-          localStorage.setItem('user', JSON.stringify(foundUser));
-          console.log('User successfully stored in localStorage after login');
-        } catch (storageError) {
-          console.error('Failed to store user in localStorage:', storageError);
+      if (data.session) {
+        // Get user profile
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+          
+        if (profileError) {
+          console.error('Error fetching user profile:', profileError);
+          throw profileError;
         }
         
+        const userWithProfile = {
+          id: data.user.id,
+          email: data.user.email || '',
+          name: profile.name || '',
+          role: profile.role as UserRole,
+          organization: profile.organization
+        };
+        
+        setUser(userWithProfile);
+        
         // Redirect based on role
-        if (foundUser.role === 'superadmin') {
+        if (userWithProfile.role === 'superadmin') {
           navigate('/superadmin');
-        } else if (foundUser.role === 'admin') {
+        } else if (userWithProfile.role === 'admin') {
           navigate('/admin');
         } else {
           navigate('/client');
         }
-      } else {
-        throw new Error('Invalid email or password');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Login error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred during login');
     } finally {
       setLoading(false);
     }
   };
 
-  // Normal logout function using React Router
-  const logout = () => {
-    console.log('Logout function called - clearing user state and removing from localStorage');
-    // Set user to null
-    setUser(null);
-    // Remove from localStorage
-    localStorage.removeItem('user');
-    // Use React Router for navigation
-    navigate('/login');
+  // Logout function
+  const logout = async () => {
+    try {
+      setLoading(true);
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Set user to null in our state
+      setUser(null);
+      // Navigate to login page
+      navigate('/login');
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Signup function
@@ -152,43 +200,62 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check if user already exists
-      if (mockUsers.some(u => u.email === email)) {
-        throw new Error('User already exists');
-      }
-      
-      // Create new user
-      const newUser: User = {
-        id: (mockUsers.length + 1).toString(),
+      // Create user in Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
         email,
-        name,
-        role,
-        organization
-      };
+        password,
+        options: {
+          data: {
+            name,
+            role,
+            organization
+          }
+        }
+      });
       
-      // In a real app, you would send this to your API
-      // For now, we'll just simulate success
-      
-      setUser(newUser);
-      // Store user in localStorage with explicit error handling
-      try {
-        localStorage.setItem('user', JSON.stringify(newUser));
-        console.log('New user successfully stored in localStorage after signup');
-      } catch (storageError) {
-        console.error('Failed to store new user in localStorage:', storageError);
+      if (error) {
+        throw error;
       }
       
-      // Redirect based on role
-      if (role === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/client');
+      if (data.user) {
+        // Create profile record in profiles table
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              id: data.user.id,
+              name,
+              role,
+              organization,
+              email
+            }
+          ]);
+          
+        if (profileError) {
+          console.error('Error creating user profile:', profileError);
+          throw profileError;
+        }
+        
+        const newUser: User = {
+          id: data.user.id,
+          email,
+          name,
+          role,
+          organization
+        };
+        
+        setUser(newUser);
+        
+        // Redirect based on role
+        if (role === 'admin') {
+          navigate('/admin');
+        } else {
+          navigate('/client');
+        }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Signup error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred during signup');
     } finally {
       setLoading(false);
     }
@@ -200,22 +267,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Send password reset email using Supabase
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`
+      });
       
-      // Check if user exists
-      const userExists = mockUsers.some(u => u.email === email);
-      
-      if (!userExists) {
-        throw new Error('No account found with this email');
+      if (error) {
+        throw error;
       }
-      
-      // In a real app, you would send a password reset email
-      // For now, we'll just simulate success
       
       navigate('/login', { state: { message: 'Password reset email sent' } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Password reset error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred sending password reset');
     } finally {
       setLoading(false);
     }
@@ -227,15 +291,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Update user password using Supabase
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
       
-      // In a real app, you would validate the token and update the password
-      // For now, we'll just simulate success
+      if (error) {
+        throw error;
+      }
       
       navigate('/login', { state: { message: 'Password reset successful' } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Reset password error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred during password reset');
     } finally {
       setLoading(false);
     }
