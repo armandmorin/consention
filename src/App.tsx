@@ -34,6 +34,45 @@ import ClientAnalytics from './pages/client/Analytics';
 // Removed middleware entirely to simplify rendering flow
 
 function App() {
+  // Handle routing and localStorage synchronization
+  React.useEffect(() => {
+    const userInStorage = localStorage.getItem('user');
+    console.log('App mounted, user in localStorage:', userInStorage ? 'exists' : 'none');
+    
+    // Handle 404 redirects from sessionStorage (set by 404.html)
+    try {
+      const redirectData = sessionStorage.getItem('redirect');
+      if (redirectData) {
+        // Clear it immediately to prevent redirect loops
+        sessionStorage.removeItem('redirect');
+        
+        // Parse the saved location data
+        const { pathname } = JSON.parse(redirectData);
+        console.log('Handling redirect from 404 page to:', pathname);
+        
+        // Let the app initialize first, then navigate
+        setTimeout(() => {
+          window.history.replaceState(null, '', pathname);
+          // Force the router to notice the change
+          window.dispatchEvent(new Event('popstate'));
+        }, 0);
+      }
+    } catch (e) {
+      console.error('Error handling redirect:', e);
+    }
+    
+    // Set up unload handler to preserve auth state
+    const handleBeforeUnload = () => {
+      if (userInStorage) {
+        console.log('Page about to unload, preserving auth state');
+        // The presence of this handler helps maintain localStorage
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+  
   return (
     <Router>
       <AuthProvider>

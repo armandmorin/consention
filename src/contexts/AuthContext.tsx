@@ -54,26 +54,44 @@ const mockUsers: User[] = [
 
 // Auth provider component
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  // Initialize user directly from localStorage
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const storedUser = localStorage.getItem('user');
+      return storedUser ? JSON.parse(storedUser) : null;
+    } catch (e) {
+      console.error('Error initializing user from localStorage:', e);
+      return null;
+    }
+  });
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Check if user is already logged in
+  // Keep user state in sync with localStorage
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
-        console.log('User loaded from localStorage on AuthContext init');
-      } else {
-        console.log('No user found in localStorage');
+    console.log('AuthContext initialized with user:', user ? `${user.name} (${user.role})` : 'none');
+    
+    // Set up storage event listener to keep auth in sync across tabs
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'user') {
+        if (e.newValue) {
+          try {
+            const newUser = JSON.parse(e.newValue);
+            console.log('User updated in another tab, syncing state');
+            setUser(newUser);
+          } catch (error) {
+            console.error('Error parsing user from storage event:', error);
+          }
+        } else {
+          console.log('User removed in another tab, logging out');
+          setUser(null);
+        }
       }
-    } catch (error) {
-      console.error('Error loading user from localStorage:', error);
-    } finally {
-      setLoading(false);
-    }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   // Login function

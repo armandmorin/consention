@@ -3,12 +3,8 @@ import ReactDOM from 'react-dom/client'
 import './index.css'
 import App from './App'
 
-// CRITICAL FIX: Removed duplicate routing configuration
-// The routes were defined in both App.tsx and main.tsx, causing
-// double initialization of auth providers and route components
-
+// Disable strict mode to prevent double mount/unmount cycles
+// This can cause auth state to be lost during development
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
+  <App />
 )
