@@ -131,15 +131,23 @@ const ClientManagement: React.FC = () => {
                       <Link
                         to={`/admin/code/${client.id}`}
                         className="text-blue-600 hover:text-blue-900 mr-3"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.href = `/admin/code/${client.id}`;
+                        }}
                       >
                         <Code className="h-5 w-5" />
                       </Link>
-                      <button
-                        type="button"
+                      <Link
+                        to={`/admin/client/${client.id}`}
                         className="text-blue-600 hover:text-blue-900 mr-3"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.href = `/admin/client/${client.id}`;
+                        }}
                       >
                         <Edit className="h-5 w-5" />
-                      </button>
+                      </Link>
                       <button
                         type="button"
                         className="text-red-600 hover:text-red-900"

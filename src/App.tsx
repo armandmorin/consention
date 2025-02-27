@@ -20,6 +20,7 @@ import BrandingSettings from './pages/admin/BrandingSettings';
 import ClientManagement from './pages/admin/ClientManagement';
 import CodeGenerator from './pages/admin/CodeGenerator';
 import AdminAnalytics from './pages/admin/Analytics';
+import ClientEdit from './pages/admin/ClientEdit';
 
 // SuperAdmin pages
 import SuperAdminDashboard from './pages/superadmin/Dashboard';
@@ -122,6 +123,16 @@ function App() {
           <Route path="/admin/code" element={
             <AdminRoute>
               <CodeGenerator />
+            </AdminRoute>
+          } />
+          <Route path="/admin/code/:clientId" element={
+            <AdminRoute>
+              <CodeGenerator />
+            </AdminRoute>
+          } />
+          <Route path="/admin/client/:clientId" element={
+            <AdminRoute>
+              <ClientEdit />
             </AdminRoute>
           } />
           <Route path="/admin/analytics" element={
