@@ -1,25 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { DEFAULT_BRANDING } from '../../config/constants';
 import { Save, RefreshCw } from 'lucide-react';
 import ConsentPopup from '../../components/consent/ConsentPopup';
 
 const BrandingSettings: React.FC = () => {
-  const [branding, setBranding] = useState({
-    primaryColor: DEFAULT_BRANDING.primaryColor,
-    secondaryColor: DEFAULT_BRANDING.secondaryColor,
-    accentColor: DEFAULT_BRANDING.accentColor,
-    textColor: DEFAULT_BRANDING.textColor,
-    backgroundColor: DEFAULT_BRANDING.backgroundColor,
-    logo: null as File | null,
-    logoPreview: '',
-    position: 'bottom',
-    theme: 'light',
+  // Load saved branding from localStorage or use defaults
+  const [branding, setBranding] = useState(() => {
+    const savedBranding = localStorage.getItem('adminBranding');
+    if (savedBranding) {
+      try {
+        const parsed = JSON.parse(savedBranding);
+        return {
+          ...parsed,
+          logo: null as File | null // File can't be stored in localStorage
+        };
+      } catch (e) {
+        console.error('Error parsing saved branding:', e);
+      }
+    }
+    return {
+      primaryColor: DEFAULT_BRANDING.primaryColor,
+      secondaryColor: DEFAULT_BRANDING.secondaryColor,
+      accentColor: DEFAULT_BRANDING.accentColor,
+      textColor: DEFAULT_BRANDING.textColor,
+      backgroundColor: DEFAULT_BRANDING.backgroundColor,
+      logo: null as File | null,
+      logoPreview: '',
+      position: 'bottom',
+      theme: 'light',
+    };
   });
 
   const [showPreview, setShowPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  
+  // Apply branding settings when component mounts
+  useEffect(() => {
+    // Apply the current branding settings to CSS variables
+    document.documentElement.style.setProperty('--primary-color', branding.primaryColor);
+    document.documentElement.style.setProperty('--secondary-color', branding.secondaryColor);
+    
+    // Log loaded settings
+    console.log('Branding settings loaded:', branding);
+    
+    // Cleanup when component unmounts
+    return () => {
+      // If needed, cleanup CSS variables
+    };
+  }, []);
 
   const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -49,7 +79,8 @@ const BrandingSettings: React.FC = () => {
   };
 
   const handleReset = () => {
-    setBranding({
+    // Reset to defaults
+    const defaultBranding = {
       primaryColor: DEFAULT_BRANDING.primaryColor,
       secondaryColor: DEFAULT_BRANDING.secondaryColor,
       accentColor: DEFAULT_BRANDING.accentColor,
@@ -59,17 +90,43 @@ const BrandingSettings: React.FC = () => {
       logoPreview: '',
       position: 'bottom',
       theme: 'light',
-    });
+    };
+    
+    setBranding(defaultBranding);
+    
+    // Clear saved settings
+    localStorage.removeItem('adminBranding');
+    console.log('Branding settings reset to defaults');
+    
+    // Show success message
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
   };
 
   const handleSave = () => {
     setSaving(true);
-    // Simulate API call
-    setTimeout(() => {
+    
+    try {
+      // Save branding settings to localStorage
+      const brandingToSave = { ...branding };
+      delete brandingToSave.logo; // Can't store File object
+      
+      localStorage.setItem('adminBranding', JSON.stringify(brandingToSave));
+      console.log('Branding settings saved to localStorage:', brandingToSave);
+      
+      // Apply the branding settings to the document if needed
+      document.documentElement.style.setProperty('--primary-color', branding.primaryColor);
+      document.documentElement.style.setProperty('--secondary-color', branding.secondaryColor);
+      
+      // Show success feedback
       setSaving(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    }, 1000);
+    } catch (error) {
+      console.error('Error saving branding settings:', error);
+      alert('Failed to save branding settings. Please try again.');
+      setSaving(false);
+    }
   };
 
   return (
