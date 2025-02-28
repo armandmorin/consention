@@ -273,39 +273,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Logout function
   const logout = async () => {
     try {
-      setLoading(true);
       console.log('Logging out...');
       
-      // Clear local state first
+      // Clear local state
       setUser(null);
-      
-      // Sign out from Supabase
-      const { error } = await supabase.auth.signOut();
-      
-      if (error) {
-        console.error('Error during signOut:', error);
-        throw error;
-      }
       
       // Clear any local storage items manually
       localStorage.removeItem('sb-fgnvobekfychilwomxij-auth-token');
       
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+      
       console.log('Successfully logged out');
       
-      // Navigate to login page - add a slight delay to ensure state clears
-      setTimeout(() => {
-        navigate('/login');
-        // Force page reload to clear any React state
-        window.location.reload();
-      }, 100);
+      // Skip React navigation and directly force reload to the login page
+      window.location.href = '/login';
     } catch (err) {
       console.error('Logout error:', err);
-      // Still navigate to login even if there's an error
-      navigate('/login');
-      window.location.reload();
-    } finally {
-      setLoading(false);
+      // Force reload to login page even if there's an error
+      window.location.href = '/login';
     }
+    // Don't use finally with setLoading here since we're reloading the page
   };
 
   // Signup function
