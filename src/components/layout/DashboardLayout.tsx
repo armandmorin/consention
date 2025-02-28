@@ -28,7 +28,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   
   // Check authentication status and redirect to login if needed
   useEffect(() => {
-    if (!loading && !user) {
+    // Only redirect if explicitly not logged in (not during initial loading)
+    if (!loading && user === null) {
       console.log('No user detected in DashboardLayout, redirecting to login');
       navigate('/login');
     }

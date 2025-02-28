@@ -68,17 +68,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         setLoading(true);
         
-        // Get current session with a timeout
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Session fetch timeout')), 2000)
-        );
-        
-        // Race between session fetch and timeout
-        const { data: { session } } = await Promise.race([
-          sessionPromise,
-          timeoutPromise
-        ]) as any;
+        // Get current session directly - the timeout was causing issues
+        const { data: { session } } = await supabase.auth.getSession();
         
         if (session) {
           console.log('Active session found, fetching user profile');
@@ -119,8 +110,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       } catch (error) {
         console.error('Session check error:', error);
-        // On error, clear user state to force login
-        setUser(null);
+        // Don't clear user on session check error, just log it
+        // This prevents automatic logout on transient errors
       } finally {
         // Always set loading to false, even if there are errors
         console.log('Session check completed, setting loading to false');

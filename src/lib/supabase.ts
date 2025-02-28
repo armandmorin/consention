@@ -11,10 +11,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
-    storageKey: 'consenthub-auth',
+    // Keep the original storage key to maintain compatibility with existing sessions
+    storageKey: 'sb-fgnvobekfychilwomxij-auth-token',
     storage: localStorage,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
-    flowType: 'implicit'
+    detectSessionInUrl: false
   }
 })
