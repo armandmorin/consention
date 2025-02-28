@@ -83,13 +83,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             
             console.log('User role set to:', userRole);
           }
+        } else {
+          // No session found, ensure loading is set to false
+          console.log('No active session found');
         }
       } catch (error) {
         console.error('Session check error:', error);
       } finally {
+        // Always set loading to false, even if there are errors
         setLoading(false);
       }
     };
+    
+    // Add a safety timeout to ensure loading state is reset after 3 seconds max
+    const safetyTimer = setTimeout(() => {
+      if (loading) {
+        console.warn('Auth loading state was stuck, forcing it to false');
+        setLoading(false);
+      }
+    }, 3000);
     
     checkSession();
     
@@ -139,6 +151,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     return () => {
       subscription.unsubscribe();
+      clearTimeout(safetyTimer);
     };
   }, []);
 
@@ -278,8 +291,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Clear local state
       setUser(null);
       
-      // Clear any local storage items manually
+      // Clear all localStorage items that might hold state
       localStorage.removeItem('sb-fgnvobekfychilwomxij-auth-token');
+      localStorage.removeItem('globalBranding');
+      localStorage.removeItem('brandSettings');
       
       // Sign out from Supabase
       await supabase.auth.signOut();

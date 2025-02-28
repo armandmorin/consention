@@ -29,21 +29,19 @@ const GlobalBranding: React.FC = () => {
   
   // Load branding settings from localStorage and apply them when component mounts
   useEffect(() => {
-    // Safety mechanism to clear loading state if it gets stuck (after 5 seconds)
+    // Safety mechanism to clear loading state if it gets stuck (after 3 seconds)
     const safetyTimer = setTimeout(() => {
       if (loading) {
         console.warn("Loading state was stuck, forcing it to false");
         setLoading(false);
       }
-    }, 5000);
+    }, 3000);
     
-    // Use setTimeout to ensure this happens after initial render
-    const loadTimer = setTimeout(() => {
+    // Start loading the branding settings immediately
+    const loadBrandingSettings = () => {
       console.log("Loading branding settings from localStorage");
-      // Only set loading if we're not already loading from auth
-      if (!authLoading) {
-        setLoading(true);
-      }
+      // Set loading to true, but don't depend on authLoading
+      setLoading(true);
       setError('');
       
       try {
@@ -101,14 +99,16 @@ const GlobalBranding: React.FC = () => {
         // Always ensure loading state is set to false
         setLoading(false);
       }
-    }, 100);
+    };
     
-    // Clean up all timers on unmount
+    // Load settings immediately, don't wait for authLoading
+    loadBrandingSettings();
+    
+    // Clean up timer on unmount
     return () => {
       clearTimeout(safetyTimer);
-      clearTimeout(loadTimer);
     };
-  }, [authLoading]);
+  }, []);
   
   // Apply branding settings whenever they change
   useEffect(() => {
@@ -231,7 +231,7 @@ const GlobalBranding: React.FC = () => {
           <div className="bg-white shadow rounded-lg p-6">
             <h2 className="text-lg font-medium text-gray-900 mb-4">Branding Settings</h2>
             
-            {(loading || authLoading) && (
+            {loading && (
               <div className="mb-4 flex items-center text-blue-500">
                 <div className="animate-spin mr-2 h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
                 <span>Loading settings...</span>
