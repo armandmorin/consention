@@ -68,3 +68,76 @@ export const hasValidSession = async (): Promise<boolean> => {
     return false
   }
 }
+
+// Create a persistent session manager
+export const SessionManager = {
+  // Initialize when the app starts
+  init: async () => {
+    try {
+      // First check storage 
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored) {
+        console.log('SessionManager: Found stored session data')
+        
+        // Force refresh the session token
+        const { data, error } = await supabase.auth.refreshSession()
+        if (error) {
+          console.error('SessionManager: Failed to refresh token:', error)
+          return false
+        }
+        
+        if (data.session) {
+          console.log('SessionManager: Session refreshed successfully')
+          
+          // Store access token in sessionStorage as an additional backup
+          sessionStorage.setItem('supabase_access_token', data.session.access_token)
+          return true
+        }
+      }
+      
+      // Check for existing session
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        console.log('SessionManager: Active session exists')
+        sessionStorage.setItem('supabase_access_token', data.session.access_token)
+        return true
+      }
+      
+      return false
+    } catch (err) {
+      console.error('SessionManager: Error initializing:', err)
+      return false
+    }
+  },
+  
+  // Restore session from any available storage
+  restore: async () => {
+    try {
+      // Try to get session from Supabase
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        console.log('SessionManager: Session restored from Supabase')
+        return true
+      }
+      
+      // Try to restore from backup in sessionStorage
+      const backupToken = sessionStorage.getItem('supabase_access_token')
+      if (backupToken) {
+        console.log('SessionManager: Attempting to restore from backup token')
+        const { error } = await supabase.auth.setSession({ access_token: backupToken, refresh_token: '' })
+        
+        if (!error) {
+          console.log('SessionManager: Session restored from backup token')
+          return true
+        } else {
+          console.error('SessionManager: Failed to restore from backup token:', error)
+        }
+      }
+      
+      return false
+    } catch (err) {
+      console.error('SessionManager: Error restoring session:', err)
+      return false
+    }
+  }
+}

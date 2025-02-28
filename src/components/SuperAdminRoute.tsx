@@ -43,13 +43,31 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
     );
   }
 
-  // Only redirect if explicitly not logged in after loading completes
-  if (user === null) {
+  // Before redirecting, try to restore session directly to avoid unnecessary navigation
+  React.useEffect(() => {
+    if (user === null && !loading) {
+      // Get SessionManager and try one last session restore before redirecting
+      const trySessionRestore = async () => {
+        try {
+          const { SessionManager } = await import('../lib/supabase');
+          const restored = await SessionManager.restore();
+          console.log('Last-chance session restore result:', restored);
+        } catch (err) {
+          console.error('Error in last-chance session restore:', err);
+        }
+      };
+      
+      trySessionRestore();
+    }
+  }, [user, loading]);
+
+  // Only redirect if explicitly not logged in after loading completes and restore attempts
+  if (user === null && !loading) {
     console.log('No user found in SuperAdminRoute, redirecting to login');
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 
-  if (user.role !== 'superadmin') {
+  if (user && user.role !== 'superadmin') {
     console.log('User does not have superadmin privileges, redirecting to home');
     return <Navigate to="/" replace />;
   }

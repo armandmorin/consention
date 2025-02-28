@@ -44,7 +44,30 @@ const GlobalBranding: React.FC = () => {
       setError('');
       
       try {
-        // Get branding settings from Supabase
+        // First check if there's any settings in sessionStorage (for immediate display)
+        const cachedSettings = sessionStorage.getItem('global_branding_settings');
+        if (cachedSettings) {
+          try {
+            const parsedCache = JSON.parse(cachedSettings);
+            console.log('Using cached branding settings:', parsedCache);
+            
+            setBranding(prev => ({
+              ...prev,
+              primaryColor: parsedCache.primaryColor || prev.primaryColor,
+              secondaryColor: parsedCache.secondaryColor || prev.secondaryColor,
+              accentColor: parsedCache.accentColor || prev.accentColor,
+              textColor: parsedCache.textColor || prev.textColor,
+              backgroundColor: parsedCache.backgroundColor || prev.backgroundColor,
+              logoPreview: parsedCache.logoPreview || prev.logoPreview,
+              appDomain: parsedCache.appDomain || prev.appDomain,
+              logo: null as File | null
+            }));
+          } catch (cacheErr) {
+            console.error('Error parsing cached settings:', cacheErr);
+          }
+        }
+        
+        // Get branding settings from Supabase (even if we used cache)
         const { data, error } = await supabase
           .from('global_settings')
           .select('*')
@@ -72,6 +95,9 @@ const GlobalBranding: React.FC = () => {
               : data.settings;
               
             if (typeof settings === 'object' && settings !== null) {
+              // Save to sessionStorage for quick access on page refresh
+              sessionStorage.setItem('global_branding_settings', JSON.stringify(settings));
+              
               setBranding(prev => ({
                 ...prev,
                 // Only apply valid properties
@@ -84,6 +110,35 @@ const GlobalBranding: React.FC = () => {
                 appDomain: settings.appDomain || prev.appDomain,
                 logo: null as File | null
               }));
+              
+              // If logoPreview is a blob URL, try to convert it to a data URL
+              if (settings.logoPreview && settings.logoPreview.startsWith('blob:')) {
+                try {
+                  console.log('Converting blob URL to data URL for persistence');
+                  // This will only work if the blob is still available
+                  const response = await fetch(settings.logoPreview);
+                  const blob = await response.blob();
+                  const reader = new FileReader();
+                  reader.onload = function() {
+                    const dataUrl = reader.result as string;
+                    setBranding(prev => ({
+                      ...prev,
+                      logoPreview: dataUrl
+                    }));
+                    
+                    // Update the saved settings with the data URL
+                    const updatedSettings = {
+                      ...settings,
+                      logoPreview: dataUrl
+                    };
+                    sessionStorage.setItem('global_branding_settings', JSON.stringify(updatedSettings));
+                  };
+                  reader.readAsDataURL(blob);
+                } catch (blobError) {
+                  console.error('Error converting blob URL:', blobError);
+                  // Blob might be gone, which is expected - ignore the error
+                }
+              }
             } else {
               throw new Error('Invalid branding data format');
             }
@@ -150,11 +205,28 @@ const GlobalBranding: React.FC = () => {
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setBranding({
-        ...branding,
-        logo: file,
-        logoPreview: URL.createObjectURL(file),
-      });
+      
+      // Convert the file to a data URL for better persistence
+      const reader = new FileReader();
+      reader.onload = function() {
+        const dataUrl = reader.result as string;
+        
+        setBranding({
+          ...branding,
+          logo: file,
+          logoPreview: dataUrl, // Use data URL instead of blob URL
+        });
+        
+        // Save to session storage
+        const currentSettings = JSON.parse(sessionStorage.getItem('global_branding_settings') || '{}');
+        const updatedSettings = {
+          ...currentSettings,
+          logoPreview: dataUrl
+        };
+        sessionStorage.setItem('global_branding_settings', JSON.stringify(updatedSettings));
+      };
+      
+      reader.readAsDataURL(file);
     }
   };
 
@@ -221,6 +293,9 @@ const GlobalBranding: React.FC = () => {
         logoPreview: branding.logoPreview,
         appDomain: branding.appDomain
       };
+      
+      // Save to sessionStorage immediately to preserve across page refresh
+      sessionStorage.setItem('global_branding_settings', JSON.stringify(brandingToSave));
       
       // Check if settings already exist for update or insert
       const { data: existingSettings } = await supabase

@@ -39,22 +39,44 @@ function App() {
   React.useEffect(() => {
     console.log('App mounted, initializing...');
     
-    // Make sure session is hydrated from localStorage by accessing it
-    const checkSession = async () => {
+    // Initialize and restore session using SessionManager
+    const initializeSession = async () => {
       try {
-        // Force Supabase to hydrate from storage
-        const key = localStorage.getItem(`sb-${import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`);
-        console.log('Auth token in localStorage:', key ? 'exists' : 'none');
+        // Import SessionManager and initialize it
+        const { SessionManager } = await import('./lib/supabase');
         
-        // Explicitly tell Supabase to check storage for session
-        const { data } = await import('./lib/supabase').then(module => module.supabase.auth.getSession());
-        console.log('Session check on app mount:', data.session ? 'active' : 'none');
+        // Initialize session first
+        await SessionManager.init();
+        
+        // Set up session restoration on visibilitychange events
+        const handleVisibilityChange = async () => {
+          if (document.visibilityState === 'visible') {
+            console.log('Document became visible, restoring session...');
+            await SessionManager.restore();
+          }
+        };
+        
+        // Listen for page visibility changes to restore session
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        // Also restore session on focus
+        window.addEventListener('focus', async () => {
+          console.log('Window focused, restoring session...');
+          await SessionManager.restore();
+        });
+        
+        // Save that listener for cleanup
+        return () => {
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          window.removeEventListener('focus', SessionManager.restore);
+        };
       } catch (err) {
-        console.error('Session check error:', err);
+        console.error('Session initialization error:', err);
       }
     };
     
-    checkSession();
+    // Start the session initialization
+    const cleanup = initializeSession();
     
     // Handle 404 redirects from sessionStorage (set by 404.html)
     try {
