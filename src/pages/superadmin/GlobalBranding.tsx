@@ -29,27 +29,67 @@ const GlobalBranding: React.FC = () => {
   
   // Load branding settings from localStorage and apply them when component mounts
   useEffect(() => {
+    // Safety mechanism to clear loading state if it gets stuck (after 5 seconds)
+    const safetyTimer = setTimeout(() => {
+      if (loading) {
+        console.warn("Loading state was stuck, forcing it to false");
+        setLoading(false);
+      }
+    }, 5000);
+    
     // Use setTimeout to ensure this happens after initial render
-    const timer = setTimeout(() => {
+    const loadTimer = setTimeout(() => {
       console.log("Loading branding settings from localStorage");
-      setLoading(true);
+      // Only set loading if we're not already loading from auth
+      if (!authLoading) {
+        setLoading(true);
+      }
       setError('');
       
       try {
-        // Load from localStorage
-        const savedBranding = localStorage.getItem('globalBranding');
+        // Load from localStorage with safeguards
+        let savedBranding;
+        try {
+          savedBranding = localStorage.getItem('globalBranding');
+        } catch (storageError) {
+          console.error('Error accessing localStorage:', storageError);
+          throw new Error('Cannot access browser storage');
+        }
+        
         if (savedBranding) {
           try {
             const parsed = JSON.parse(savedBranding);
             console.log('Loaded branding from localStorage:', parsed);
-            setBranding(prev => ({
-              ...prev,
-              ...parsed,
-              logo: null as File | null
-            }));
+            
+            // Validate the parsed data
+            if (typeof parsed === 'object' && parsed !== null) {
+              setBranding(prev => ({
+                ...prev,
+                // Only apply valid properties
+                primaryColor: parsed.primaryColor || prev.primaryColor,
+                secondaryColor: parsed.secondaryColor || prev.secondaryColor,
+                accentColor: parsed.accentColor || prev.accentColor,
+                textColor: parsed.textColor || prev.textColor,
+                backgroundColor: parsed.backgroundColor || prev.backgroundColor,
+                logoPreview: parsed.logoPreview || prev.logoPreview,
+                appDomain: parsed.appDomain || prev.appDomain,
+                logo: null as File | null
+              }));
+            } else {
+              throw new Error('Invalid branding data format');
+            }
           } catch (e) {
             console.error('Error parsing saved global branding from localStorage:', e);
-            setError('Error loading saved branding settings');
+            // Fallback to defaults on error
+            setBranding(prev => ({
+              ...prev,
+              primaryColor: DEFAULT_BRANDING.primaryColor,
+              secondaryColor: DEFAULT_BRANDING.secondaryColor,
+              accentColor: DEFAULT_BRANDING.accentColor,
+              textColor: DEFAULT_BRANDING.textColor,
+              backgroundColor: DEFAULT_BRANDING.backgroundColor,
+            }));
+            setError('Error loading saved branding settings, reverting to defaults');
           }
         } else {
           console.log('No saved branding found, using defaults');
@@ -63,8 +103,12 @@ const GlobalBranding: React.FC = () => {
       }
     }, 100);
     
-    return () => clearTimeout(timer);
-  }, []);
+    // Clean up all timers on unmount
+    return () => {
+      clearTimeout(safetyTimer);
+      clearTimeout(loadTimer);
+    };
+  }, [authLoading]);
   
   // Apply branding settings whenever they change
   useEffect(() => {
@@ -132,32 +176,50 @@ const GlobalBranding: React.FC = () => {
     setError('');
     
     try {
-      // Prepare branding object for saving
-      const brandingToSave = { ...branding };
-      delete brandingToSave.logo; // Can't store File object
+      // Prepare branding object for saving - create a safe copy
+      const brandingToSave = {
+        primaryColor: branding.primaryColor,
+        secondaryColor: branding.secondaryColor,
+        accentColor: branding.accentColor,
+        textColor: branding.textColor,
+        backgroundColor: branding.backgroundColor,
+        logoPreview: branding.logoPreview,
+        appDomain: branding.appDomain
+      };
       
-      // Save to localStorage
-      localStorage.setItem('globalBranding', JSON.stringify(brandingToSave));
-      console.log('Global branding settings saved to localStorage:', brandingToSave);
+      // Save to localStorage - Use try/catch for each storage operation
+      try {
+        localStorage.setItem('globalBranding', JSON.stringify(brandingToSave));
+        console.log('Global branding settings saved to localStorage:', brandingToSave);
+      } catch (storageError) {
+        console.error('Error saving to localStorage:', storageError);
+        throw new Error('Browser storage is full or unavailable');
+      }
       
-      // Update the brandSettings global variable that's used by other components
-      localStorage.setItem('brandSettings', JSON.stringify({
-        logo: brandingToSave.logoPreview,
-        primaryColor: brandingToSave.primaryColor,
-        secondaryColor: brandingToSave.secondaryColor,
-      }));
+      // Update the brandSettings that's used by other components
+      try {
+        localStorage.setItem('brandSettings', JSON.stringify({
+          logo: brandingToSave.logoPreview,
+          primaryColor: brandingToSave.primaryColor,
+          secondaryColor: brandingToSave.secondaryColor,
+        }));
+      } catch (storageError) {
+        console.warn('Unable to save brand settings', storageError);
+        // Non-critical, don't throw
+      }
       
       // Apply the branding settings to the document
       document.documentElement.style.setProperty('--global-primary-color', branding.primaryColor);
       document.documentElement.style.setProperty('--global-secondary-color', branding.secondaryColor);
       
       // Show success feedback
-      setSaving(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
       console.error('Error saving global branding settings:', error);
       setError('Failed to save branding settings. Please try again.');
+    } finally {
+      // Always set saving to false at the end
       setSaving(false);
     }
   };

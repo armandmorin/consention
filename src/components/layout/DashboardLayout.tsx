@@ -73,6 +73,21 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
         { name: 'Analytics', href: '/client/analytics', icon: BarChart2 },
       ];
 
+  // Fail-safe for stuck loading state
+  const [stuckLoading, setStuckLoading] = useState(false);
+  
+  // Set up a timer to detect stuck loading state
+  useEffect(() => {
+    if (loading) {
+      const stuckTimer = setTimeout(() => {
+        console.warn("DashboardLayout loading state appears stuck, forcing a manual refresh option");
+        setStuckLoading(true);
+      }, 8000); // 8 seconds is long enough to detect a real problem
+      
+      return () => clearTimeout(stuckTimer);
+    }
+  }, [loading]);
+  
   // Show loading state
   if (loading) {
     return (
@@ -80,6 +95,18 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
         <div className="text-center">
           <h2 className="text-xl font-semibold mb-4">Loading...</h2>
           <p className="text-gray-500">Please wait while we set up your dashboard</p>
+          
+          {stuckLoading && (
+            <div className="mt-6">
+              <p className="text-amber-600 mb-2">Loading seems to be taking longer than usual</p>
+              <button 
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Refresh Page
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
