@@ -388,11 +388,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         setUser(newUser);
         
-        // Redirect based on role
-        if (role === 'admin') {
-          navigate('/admin');
-        } else {
-          navigate('/client');
+        // Don't redirect if signing up from admin panel
+        // This is a special case for when superadmin creates an admin
+        // We only want to redirect if the signup is for the user themselves
+        const isCalledFromAdminPanel = window.location.pathname.includes('/superadmin');
+        
+        if (!isCalledFromAdminPanel) {
+          // Only redirect if not called from admin panel
+          if (role === 'admin') {
+            navigate('/admin');
+          } else {
+            navigate('/client');
+          }
         }
       }
     } catch (err) {

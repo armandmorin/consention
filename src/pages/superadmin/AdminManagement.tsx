@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { PlusCircle, Edit, Trash2, Search, X } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Admin {
   id: string;
@@ -12,27 +14,69 @@ interface Admin {
   joinedDate: string;
 }
 
+interface AddAdminForm {
+  name: string;
+  email: string;
+  company: string;
+  password: string;
+}
+
 const AdminManagement: React.FC = () => {
+  const { signup } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState<Admin | null>(null);
+  const [admins, setAdmins] = useState<Admin[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [addForm, setAddForm] = useState<AddAdminForm>({
+    name: '',
+    email: '',
+    company: '',
+    password: ''
+  });
   const [editForm, setEditForm] = useState({
     name: '',
     email: '', 
     company: ''
   });
 
-  // Mock data for admins
-  const admins: Admin[] = [
-    { id: '1', name: 'Jane Cooper', email: 'jane@example.com', company: 'Paradigm Solutions', clients: 12, status: 'active', joinedDate: '2023-05-12' },
-    { id: '2', name: 'John Smith', email: 'john@example.com', company: 'Tech Innovators', clients: 8, status: 'active', joinedDate: '2023-05-10' },
-    { id: '3', name: 'Robert Johnson', email: 'robert@example.com', company: 'Digital Frontiers', clients: 5, status: 'inactive', joinedDate: '2023-05-08' },
-    { id: '4', name: 'Emily Davis', email: 'emily@example.com', company: 'Webflow Masters', clients: 15, status: 'active', joinedDate: '2023-05-05' },
-    { id: '5', name: 'Michael Wilson', email: 'michael@example.com', company: 'Creative Solutions', clients: 3, status: 'active', joinedDate: '2023-05-03' },
-    { id: '6', name: 'Sarah Brown', email: 'sarah@example.com', company: 'Digital Marketing Pro', clients: 7, status: 'inactive', joinedDate: '2023-05-01' },
-  ];
+  // Fetch admins from database
+  useEffect(() => {
+    const fetchAdmins = async () => {
+      try {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('role', 'admin');
+          
+        if (error) throw error;
+        
+        // Format data to match Admin interface
+        const formattedAdmins: Admin[] = data.map(profile => ({
+          id: profile.id,
+          name: profile.name || '',
+          email: profile.email || '',
+          company: profile.organization || '',
+          clients: 0, // This would come from a join or another query in a real app
+          status: 'active', // This would be determined by account status
+          joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
+        }));
+        
+        setAdmins(formattedAdmins);
+      } catch (err) {
+        console.error('Error fetching admins:', err);
+        setError('Failed to load admin accounts');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchAdmins();
+  }, []);
 
   const filteredAdmins = admins.filter(admin => 
     admin.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -40,9 +84,57 @@ const AdminManagement: React.FC = () => {
     admin.company.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleAddAdmin = () => {
-    // Handle adding admin logic
-    setShowAddModal(false);
+  const handleAddAdmin = async () => {
+    try {
+      // Validate form
+      if (!addForm.name || !addForm.email || !addForm.password) {
+        setError('Please fill in all required fields');
+        return;
+      }
+      
+      // Use the signup function from AuthContext to create the admin
+      await signup(
+        addForm.email,       // email
+        addForm.password,    // password
+        addForm.name,        // name
+        'admin',             // role
+        addForm.company      // organization
+      );
+      
+      // Refresh admin list
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'admin');
+        
+      if (error) throw error;
+      
+      // Format data to match Admin interface
+      const formattedAdmins: Admin[] = data.map(profile => ({
+        id: profile.id,
+        name: profile.name || '',
+        email: profile.email || '',
+        company: profile.organization || '',
+        clients: 0,
+        status: 'active',
+        joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
+      }));
+      
+      setAdmins(formattedAdmins);
+      
+      // Reset form and close modal
+      setAddForm({
+        name: '',
+        email: '',
+        company: '',
+        password: ''
+      });
+      setShowAddModal(false);
+      setError(null);
+    } catch (err) {
+      console.error('Error adding admin:', err);
+      setError('Failed to create admin account. Please try again.');
+    }
   };
 
   const handleDeleteAdmin = () => {
@@ -73,6 +165,11 @@ const AdminManagement: React.FC = () => {
   return (
     <DashboardLayout title="Admin Management">
       <div className="bg-white shadow rounded-lg">
+        {error && !showAddModal && (
+          <div className="bg-red-50 p-4 rounded-t-lg">
+            <p className="text-sm text-red-800">{error}</p>
+          </div>
+        )}
         <div className="px-4 py-5 sm:px-6 flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
           <div className="relative rounded-md shadow-sm max-w-xs w-full">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -135,57 +232,67 @@ const AdminManagement: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredAdmins.map((admin) => (
-                  <tr key={admin.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {admin.name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {admin.email}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {admin.company}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {admin.clients}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        admin.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
-                        {admin.status === 'active' ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {admin.joinedDate}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        type="button"
-                        className="text-blue-600 hover:text-blue-900 mr-3"
-                        onClick={() => startEditAdmin(admin)}
-                      >
-                        <Edit className="h-5 w-5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="text-red-600 hover:text-red-900"
-                        onClick={() => {
-                          setSelectedAdmin(admin);
-                          setShowDeleteModal(true);
-                        }}
-                      >
-                        <Trash2 className="h-5 w-5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {filteredAdmins.length === 0 && (
+                {loading ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
-                      No admins found matching your search criteria.
+                      Loading admin accounts...
                     </td>
                   </tr>
+                ) : (
+                  <>
+                    {filteredAdmins.map((admin) => (
+                      <tr key={admin.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {admin.name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {admin.email}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {admin.company}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {admin.clients}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            admin.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {admin.status === 'active' ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {admin.joinedDate}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <button
+                            type="button"
+                            className="text-blue-600 hover:text-blue-900 mr-3"
+                            onClick={() => startEditAdmin(admin)}
+                          >
+                            <Edit className="h-5 w-5" />
+                          </button>
+                          <button
+                            type="button"
+                            className="text-red-600 hover:text-red-900"
+                            onClick={() => {
+                              setSelectedAdmin(admin);
+                              setShowDeleteModal(true);
+                            }}
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredAdmins.length === 0 && !loading && (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
+                          {searchTerm ? 'No admins found matching your search criteria.' : 'No admin accounts found. Add your first admin using the "Add Admin" button.'}
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 )}
               </tbody>
             </table>
@@ -209,6 +316,15 @@ const AdminManagement: React.FC = () => {
                       Add New Admin
                     </h3>
                     <div className="mt-4 space-y-4">
+                      {error && (
+                        <div className="rounded-md bg-red-50 p-2 mb-3">
+                          <div className="flex">
+                            <div className="ml-2">
+                              <p className="text-sm font-medium text-red-800">{error}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div>
                         <label htmlFor="name" className="block text-sm font-medium text-gray-700">
                           Name
@@ -217,7 +333,10 @@ const AdminManagement: React.FC = () => {
                           type="text"
                           name="name"
                           id="name"
+                          value={addForm.name}
+                          onChange={(e) => setAddForm({...addForm, name: e.target.value})}
                           className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                          required
                         />
                       </div>
                       <div>
@@ -228,7 +347,10 @@ const AdminManagement: React.FC = () => {
                           type="email"
                           name="email"
                           id="email"
+                          value={addForm.email}
+                          onChange={(e) => setAddForm({...addForm, email: e.target.value})}
                           className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                          required
                         />
                       </div>
                       <div>
@@ -239,6 +361,8 @@ const AdminManagement: React.FC = () => {
                           type="text"
                           name="company"
                           id="company"
+                          value={addForm.company}
+                          onChange={(e) => setAddForm({...addForm, company: e.target.value})}
                           className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                         />
                       </div>
@@ -250,7 +374,10 @@ const AdminManagement: React.FC = () => {
                           type="password"
                           name="password"
                           id="password"
+                          value={addForm.password}
+                          onChange={(e) => setAddForm({...addForm, password: e.target.value})}
                           className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                          required
                         />
                       </div>
                     </div>
