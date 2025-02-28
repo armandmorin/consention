@@ -92,14 +92,22 @@ const AdminManagement: React.FC = () => {
         return;
       }
       
+      setLoading(true);
+      
       // Use the signup function from AuthContext to create the admin
-      await signup(
+      const result = await signup(
         addForm.email,       // email
         addForm.password,    // password
         addForm.name,        // name
         'admin',             // role
         addForm.company      // organization
       );
+      
+      console.log('Admin creation result:', result);
+      
+      if (!result || !result.success) {
+        throw new Error(result?.error || 'Failed to create admin account');
+      }
       
       // Refresh admin list
       const { data, error } = await supabase
@@ -117,7 +125,7 @@ const AdminManagement: React.FC = () => {
         company: profile.organization || '',
         clients: 0,
         status: 'active',
-        joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
+        joinedDate: profile.created_at ? new Date(profile.created_at).toISOString().split('T')[0] : '(unknown)'
       }));
       
       setAdmins(formattedAdmins);
@@ -131,9 +139,11 @@ const AdminManagement: React.FC = () => {
       });
       setShowAddModal(false);
       setError(null);
+      setLoading(false);
     } catch (err) {
       console.error('Error adding admin:', err);
-      setError('Failed to create admin account. Please try again.');
+      setError('Failed to create admin account: ' + (err instanceof Error ? err.message : String(err)));
+      setLoading(false);
     }
   };
 

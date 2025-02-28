@@ -1,4 +1,4 @@
-import React, { ReactNode, useState, useCallback } from 'react';
+import React, { ReactNode, useState, useCallback, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
@@ -24,7 +24,15 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout, user } = useAuth();
+  const { logout, user, loading } = useAuth();
+  
+  // Check authentication status and redirect to login if needed
+  useEffect(() => {
+    if (!loading && !user) {
+      console.log('No user detected in DashboardLayout, redirecting to login');
+      navigate('/login');
+    }
+  }, [user, loading, navigate]);
   
   // Determine user type from URL
   const isSuperAdmin = location.pathname.includes('/superadmin');
@@ -65,6 +73,23 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
         { name: 'Analytics', href: '/client/analytics', icon: BarChart2 },
       ];
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold mb-4">Loading...</h2>
+          <p className="text-gray-500">Please wait while we set up your dashboard</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Don't render if not authenticated
+  if (!user) {
+    return null; // useEffect will handle redirect
+  }
+  
   return (
     <div className="h-screen flex overflow-hidden bg-gray-100">
       {/* Mobile sidebar */}

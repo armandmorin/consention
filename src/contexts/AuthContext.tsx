@@ -301,110 +301,147 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(true);
     setError(null);
     
+    // Check if we're on an admin page (creating a user for someone else)
+    // or a signup page (creating a user for oneself)
+    const isAdminCreatingUser = window.location.pathname.includes('/admin') || 
+                              window.location.pathname.includes('/superadmin');
+    
+    console.log('Signup called from:', window.location.pathname, 'isAdminCreatingUser:', isAdminCreatingUser);
+    
     try {
-      // Create user in Supabase Auth
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name,
-            role,
-            organization
-          }
-        }
-      });
-      
-      if (error) {
-        throw error;
+      // Store current user if admin is creating another user
+      let currentUser = null;
+      if (isAdminCreatingUser) {
+        currentUser = user;
+        console.log('Admin is creating a user, preserving current user session');
       }
       
-      if (data.user) {
+      // Create user in Supabase - use admin API if available
+      let userData;
+      let userError;
+      
+      if (isAdminCreatingUser && window.location.pathname.includes('/superadmin')) {
+        // Create user without signing in as that user
+        console.log('Creating user with admin.createUser');
+        try {
+          // Use a direct API call to create user without signing in
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/admin/users`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+            },
+            body: JSON.stringify({
+              email,
+              password,
+              email_confirm: true,
+              user_metadata: { name, role, organization }
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to create user: ${response.statusText}`);
+          }
+          
+          const createdUser = await response.json();
+          userData = { user: createdUser };
+        } catch (adminError) {
+          console.error('Admin user creation failed, falling back to standard signup:', adminError);
+          // Fall back to standard signup
+          const result = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                name,
+                role,
+                organization
+              }
+            }
+          });
+          userData = result.data;
+          userError = result.error;
+        }
+      } else {
+        // Standard signup
+        const result = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name,
+              role,
+              organization
+            }
+          }
+        });
+        userData = result.data;
+        userError = result.error;
+      }
+      
+      if (userError) {
+        throw userError;
+      }
+      
+      if (userData.user) {
         // Create profile record in profiles table
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .insert([
             {
-              id: data.user.id,
+              id: userData.user.id,
               name,
               role,
               organization,
               email
             }
-          ])
-          .select()
-          .single();
+          ]);
           
         if (profileError) {
           console.error('Error creating user profile:', profileError);
           
           // Check if this is just a duplicate profile error
           if (profileError.code === '23505') { // unique_violation
-            console.log('Profile already exists, retrieving existing profile');
-            
-            // Get the existing profile
-            const { data: existingProfile, error: fetchError } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', data.user.id)
-              .single();
-              
-            if (fetchError) {
-              console.error('Error fetching existing profile:', fetchError);
-              throw fetchError;
-            }
-            
-            // Use the existing profile
-            const existingUser: User = {
-              id: data.user.id,
-              email,
-              name: existingProfile.name,
-              role: existingProfile.role,
-              organization: existingProfile.organization
-            };
-            
-            setUser(existingUser);
-            
-            // Redirect based on role
-            if (existingUser.role === 'admin') {
-              navigate('/admin');
-            } else {
-              navigate('/client');
-            }
-            return;
+            console.log('Profile already exists');
           } else {
             throw profileError;
           }
         }
         
-        // Profile created successfully
-        const newUser: User = {
-          id: data.user.id,
-          email,
-          name,
-          role,
-          organization
-        };
+        // If admin is creating a user, restore the admin's session
+        if (isAdminCreatingUser && currentUser) {
+          console.log('Restoring admin user session');
+          setUser(currentUser);
+          return { success: true, userId: userData.user.id };
+        }
         
-        setUser(newUser);
-        
-        // Don't redirect if signing up from admin panel
-        // This is a special case for when superadmin creates an admin
-        // We only want to redirect if the signup is for the user themselves
-        const isCalledFromAdminPanel = window.location.pathname.includes('/superadmin');
-        
-        if (!isCalledFromAdminPanel) {
-          // Only redirect if not called from admin panel
+        // Otherwise, this is self-signup, set the new user
+        if (!isAdminCreatingUser) {
+          const newUser: User = {
+            id: userData.user.id,
+            email,
+            name,
+            role,
+            organization
+          };
+          
+          setUser(newUser);
+          
+          // Redirect based on role for self-signup
           if (role === 'admin') {
             navigate('/admin');
           } else {
             navigate('/client');
           }
         }
+        
+        return { success: true, userId: userData.user.id };
       }
     } catch (err) {
       console.error('Signup error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during signup');
+      return { success: false, error: err };
     } finally {
       setLoading(false);
     }
