@@ -82,9 +82,22 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
       const stuckTimer = setTimeout(() => {
         console.warn("DashboardLayout loading state appears stuck, forcing a manual refresh option");
         setStuckLoading(true);
-      }, 8000); // 8 seconds is long enough to detect a real problem
+      }, 4000); // Reduced from 8 to 4 seconds to detect issues faster
       
       return () => clearTimeout(stuckTimer);
+    }
+  }, [loading]);
+  
+  // Force loading state to false if it gets stuck for too long
+  useEffect(() => {
+    if (loading) {
+      const forceResetTimer = setTimeout(() => {
+        console.warn("DashboardLayout loading state was stuck for too long, forcing it to false");
+        // This hack helps recover from stuck auth states
+        window.dispatchEvent(new CustomEvent('auth:forceReset'));
+      }, 6000); // Force state reset after 6 seconds
+      
+      return () => clearTimeout(forceResetTimer);
     }
   }, [loading]);
   
@@ -99,12 +112,30 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
           {stuckLoading && (
             <div className="mt-6">
               <p className="text-amber-600 mb-2">Loading seems to be taking longer than usual</p>
-              <button 
-                onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
-                Refresh Page
-              </button>
+              <div className="flex space-x-2 justify-center">
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  Refresh Page
+                </button>
+                <button 
+                  onClick={() => {
+                    // Clear all auth-related localStorage items
+                    const localStorageKeys = Object.keys(localStorage);
+                    localStorageKeys.forEach(key => {
+                      if (key.startsWith('sb-') || key.includes('supabase') || key.includes('consent')) {
+                        localStorage.removeItem(key);
+                      }
+                    });
+                    // Force reload
+                    window.location.href = '/login';
+                  }}
+                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                >
+                  Clear Cache & Login
+                </button>
+              </div>
             </div>
           )}
         </div>

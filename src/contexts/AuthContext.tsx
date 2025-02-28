@@ -39,31 +39,53 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Initialize user from Supabase session
   useEffect(() => {
+    console.log('AuthContext initializing, checking session');
+    
+    // Function to get user profile data
+    const getUserProfile = async (userId: string): Promise<any> => {
+      try {
+        // Get user profile data from profiles table
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
+          
+        if (profileError) {
+          console.error('Error fetching user profile:', profileError);
+          throw profileError;
+        }
+        
+        return profile;
+      } catch (error) {
+        console.error('Get user profile error:', error);
+        return null;
+      }
+    };
+    
     // Check current session
     const checkSession = async () => {
       try {
         setLoading(true);
         
-        // Get current session
-        const { data: { session } } = await supabase.auth.getSession();
+        // Get current session with a timeout
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Session fetch timeout')), 2000)
+        );
+        
+        // Race between session fetch and timeout
+        const { data: { session } } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]) as any;
         
         if (session) {
-          // Get user profile data from profiles table
-          const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-            
-          if (profileError) {
-            console.error('Error fetching user profile:', profileError);
-            throw profileError;
-          }
+          console.log('Active session found, fetching user profile');
+          const profile = await getUserProfile(session.user.id);
           
           // Combine auth and profile data
           if (profile) {
-            console.log('Profile fetched during initial session check:', profile);
-            
             // Explicit check for superadmin role
             let userRole: UserRole = 'client';
             if (profile.role === 'superadmin') {
@@ -80,17 +102,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               role: userRole,
               organization: profile.organization
             });
-            
-            console.log('User role set to:', userRole);
+          } else {
+            // No profile but valid session, create minimal user
+            console.warn('Session exists but no profile found, creating minimal user');
+            setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+              name: session.user.user_metadata?.name || 'User',
+              role: 'client'
+            });
           }
         } else {
           // No session found, ensure loading is set to false
-          console.log('No active session found');
+          console.log('No active session found, user not authenticated');
+          setUser(null);
         }
       } catch (error) {
         console.error('Session check error:', error);
+        // On error, clear user state to force login
+        setUser(null);
       } finally {
         // Always set loading to false, even if there are errors
+        console.log('Session check completed, setting loading to false');
         setLoading(false);
       }
     };
@@ -102,6 +135,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setLoading(false);
       }
     }, 3000);
+    
+    // Listen for force reset events from other components
+    const handleForceReset = () => {
+      console.log('Received force reset event, resetting auth loading state');
+      setLoading(false);
+    };
+    
+    window.addEventListener('auth:forceReset', handleForceReset);
     
     checkSession();
     
@@ -152,6 +193,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => {
       subscription.unsubscribe();
       clearTimeout(safetyTimer);
+      window.removeEventListener('auth:forceReset', handleForceReset);
     };
   }, []);
 
@@ -293,8 +335,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       // Clear all localStorage items that might hold state
       localStorage.removeItem('sb-fgnvobekfychilwomxij-auth-token');
+      localStorage.removeItem('consenthub-auth');
       localStorage.removeItem('globalBranding');
       localStorage.removeItem('brandSettings');
+      
+      // Clear any other localStorage items to ensure clean state
+      const localStorageKeys = Object.keys(localStorage);
+      localStorageKeys.forEach(key => {
+        if (key.startsWith('sb-') || key.includes('supabase') || key.includes('consent')) {
+          localStorage.removeItem(key);
+        }
+      });
       
       // Sign out from Supabase
       await supabase.auth.signOut();

@@ -1,12 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { DEFAULT_BRANDING } from '../../config/constants';
-import { Save, RefreshCw } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { Save, RefreshCw, RefreshCcw } from 'lucide-react';
 
 const GlobalBranding: React.FC = () => {
-  // Get auth context to check loading state
-  const { loading: authLoading } = useAuth();
   
   // Load saved branding from server or localStorage, or use defaults
   const [branding, setBranding] = useState(() => {
@@ -224,12 +221,86 @@ const GlobalBranding: React.FC = () => {
     }
   };
 
+  // Reset loading state and refresh branding settings
+  const handleRefreshBranding = () => {
+    setLoading(true);
+    
+    try {
+      // Clear error state
+      setError('');
+      
+      // Load from localStorage with safeguards
+      let savedBranding;
+      try {
+        savedBranding = localStorage.getItem('globalBranding');
+      } catch (storageError) {
+        console.error('Error accessing localStorage:', storageError);
+        throw new Error('Cannot access browser storage');
+      }
+      
+      if (savedBranding) {
+        try {
+          const parsed = JSON.parse(savedBranding);
+          console.log('Refreshed branding from localStorage:', parsed);
+          
+          // Validate the parsed data
+          if (typeof parsed === 'object' && parsed !== null) {
+            setBranding(prev => ({
+              ...prev,
+              // Only apply valid properties
+              primaryColor: parsed.primaryColor || prev.primaryColor,
+              secondaryColor: parsed.secondaryColor || prev.secondaryColor,
+              accentColor: parsed.accentColor || prev.accentColor,
+              textColor: parsed.textColor || prev.textColor,
+              backgroundColor: parsed.backgroundColor || prev.backgroundColor,
+              logoPreview: parsed.logoPreview || prev.logoPreview,
+              appDomain: parsed.appDomain || prev.appDomain,
+              logo: null as File | null
+            }));
+          } else {
+            throw new Error('Invalid branding data format');
+          }
+        } catch (e) {
+          console.error('Error parsing saved global branding from localStorage:', e);
+          // Fallback to defaults on error
+          setBranding(prev => ({
+            ...prev,
+            primaryColor: DEFAULT_BRANDING.primaryColor,
+            secondaryColor: DEFAULT_BRANDING.secondaryColor,
+            accentColor: DEFAULT_BRANDING.accentColor,
+            textColor: DEFAULT_BRANDING.textColor,
+            backgroundColor: DEFAULT_BRANDING.backgroundColor,
+          }));
+          setError('Error loading saved branding settings, reverting to defaults');
+        }
+      } else {
+        console.log('No saved branding found, using defaults');
+      }
+    } catch (err) {
+      console.error('Error loading global branding:', err);
+      setError('Failed to load branding settings');
+    } finally {
+      // Always ensure loading state is set to false
+      setLoading(false);
+    }
+  };
+
   return (
     <DashboardLayout title="Global Branding">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Branding Settings</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-medium text-gray-900">Branding Settings</h2>
+              <button 
+                onClick={handleRefreshBranding} 
+                className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+                disabled={loading}
+              >
+                <RefreshCcw className="h-4 w-4 mr-1" />
+                Refresh
+              </button>
+            </div>
             
             {loading && (
               <div className="mb-4 flex items-center text-blue-500">
