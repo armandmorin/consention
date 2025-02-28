@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Shield, Mail, Lock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 interface LocationState {
   message?: string;
@@ -10,14 +11,53 @@ interface LocationState {
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, loading, error } = useAuth();
+  const { login, loading, error, user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const state = location.state as LocationState;
   const message = state?.message;
+  
+  // Reset loading state when component mounts
+  useEffect(() => {
+    // Clear any stale Supabase session on component mount
+    const clearStaleSession = async () => {
+      // Check if user is already logged in
+      if (user) {
+        // If already logged in, redirect
+        if (user.role === 'superadmin') {
+          navigate('/superadmin');
+        } else if (user.role === 'admin') {
+          navigate('/admin');
+        } else if (user.role === 'client') {
+          navigate('/client');
+        }
+        return;
+      }
+      
+      // Clear local storage on component mount
+      try {
+        const session = await supabase.auth.getSession();
+        if (!session.data.session) {
+          console.log('Clearing any stale auth tokens');
+          localStorage.removeItem('sb-fgnvobekfychilwomxij-auth-token');
+        }
+      } catch (err) {
+        console.error('Error checking session:', err);
+      }
+    };
+    
+    clearStaleSession();
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await login(email, password);
+    try {
+      await login(email, password);
+    } catch (err) {
+      console.error('Login form error:', err);
+      // Reset form on error for a better user experience
+      setPassword('');
+    }
   };
 
   return (
