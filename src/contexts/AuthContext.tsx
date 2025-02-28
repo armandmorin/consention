@@ -41,6 +41,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     console.log('Auth provider mounted - setting up authentication');
     
+    // Force Supabase to check localStorage and refresh auth state
+    const forceAuthRefresh = async () => {
+      try {
+        // Get the storage key
+        const PROJECT_ID = import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0];
+        const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
+        
+        // Check for stored session
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          console.log('Found stored session in localStorage');
+          
+          // Try to refresh the session
+          const { data, error } = await supabase.auth.refreshSession();
+          if (!error && data.session) {
+            console.log('Successfully refreshed session');
+          } else if (error) {
+            console.error('Failed to refresh session:', error);
+          }
+        } else {
+          console.log('No stored session found in localStorage');
+        }
+      } catch (err) {
+        console.error('Error checking stored auth:', err);
+      }
+    };
+    
+    // Immediately try to refresh auth state
+    forceAuthRefresh();
+    
     // Function to fetch user profile data 
     const fetchUserProfile = async (userId: string): Promise<any> => {
       try {

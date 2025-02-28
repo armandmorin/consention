@@ -37,8 +37,24 @@ import ClientAnalytics from './pages/client/Analytics';
 function App() {
   // Handle routing and localStorage synchronization
   React.useEffect(() => {
-    const userInStorage = localStorage.getItem('user');
-    console.log('App mounted, user in localStorage:', userInStorage ? 'exists' : 'none');
+    console.log('App mounted, initializing...');
+    
+    // Make sure session is hydrated from localStorage by accessing it
+    const checkSession = async () => {
+      try {
+        // Force Supabase to hydrate from storage
+        const key = localStorage.getItem(`sb-${import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`);
+        console.log('Auth token in localStorage:', key ? 'exists' : 'none');
+        
+        // Explicitly tell Supabase to check storage for session
+        const { data } = await import('./lib/supabase').then(module => module.supabase.auth.getSession());
+        console.log('Session check on app mount:', data.session ? 'active' : 'none');
+      } catch (err) {
+        console.error('Session check error:', err);
+      }
+    };
+    
+    checkSession();
     
     // Handle 404 redirects from sessionStorage (set by 404.html)
     try {
@@ -62,12 +78,10 @@ function App() {
       console.error('Error handling redirect:', e);
     }
     
-    // Set up unload handler to preserve auth state
+    // Set up unload handler to help with session persistence
     const handleBeforeUnload = () => {
-      if (userInStorage) {
-        console.log('Page about to unload, preserving auth state');
-        // The presence of this handler helps maintain localStorage
-      }
+      // Log that we're about to unload
+      console.log('Page about to unload, preserving auth state');
     };
     
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -76,7 +90,8 @@ function App() {
   
   return (
     <Router>
-      <AuthProvider>
+      {/* Use key to force remount when URL changes */}
+      <AuthProvider key={window.location.pathname}>
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<LandingPage />} />

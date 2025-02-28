@@ -10,6 +10,16 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
+  // For direct debugging - check what's in localStorage
+  React.useEffect(() => {
+    console.log('SuperAdminRoute mounted at path:', location.pathname);
+    
+    // Check localStorage for auth token
+    const storageKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`;
+    const authData = localStorage.getItem(storageKey);
+    console.log('Auth data in localStorage:', authData ? 'exists (length: ' + authData.length + ')' : 'none');
+  }, [location.pathname]);
+
   // Force authentication state reset if taking too long
   React.useEffect(() => {
     // Dispatch safety event after 4 seconds if still loading
