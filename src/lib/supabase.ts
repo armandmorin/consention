@@ -7,14 +7,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
-// Create Supabase client with persistent sessions and storage options
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    // Keep the original storage key to maintain compatibility with existing sessions
-    storageKey: 'sb-fgnvobekfychilwomxij-auth-token',
-    storage: localStorage,
-    autoRefreshToken: true,
-    detectSessionInUrl: false
-  }
-})
+// Create Supabase client with simplest configuration
+// Any extra options seem to be interfering with session persistence
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)

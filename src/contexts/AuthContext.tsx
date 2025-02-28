@@ -41,8 +41,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     console.log('AuthContext initializing, checking session');
     
-    // Function to get user profile data
-    const getUserProfile = async (userId: string): Promise<any> => {
+    // Function to get user profile data with retries
+    const getUserProfile = async (userId: string, retries = 2): Promise<any> => {
       try {
         // Get user profile data from profiles table
         const { data: profile, error: profileError } = await supabase
@@ -52,7 +52,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           .single();
           
         if (profileError) {
-          console.error('Error fetching user profile:', profileError);
+          if (retries > 0) {
+            console.warn(`Error fetching profile, retrying... (${retries} left)`);
+            // Wait 500ms before retry
+            await new Promise(r => setTimeout(r, 500));
+            return getUserProfile(userId, retries - 1);
+          }
+          console.error('Error fetching user profile after retries:', profileError);
           throw profileError;
         }
         
@@ -68,11 +74,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         setLoading(true);
         
-        // Get current session directly - the timeout was causing issues
+        // Do not set loading to false immediately to prevent race conditions
+        // First check if we have a session in storage (manual check)
+        const tokenInStorage = Object.keys(localStorage).some(key => 
+          key.startsWith('sb-') && key.includes('auth-token')
+        );
+        
+        console.log('Checking for session token in localStorage:', tokenInStorage ? 'Found' : 'Not found');
+        
+        // Get current session directly
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session) {
-          console.log('Active session found, fetching user profile');
+          console.log('Active session found, fetching user profile', session.user.id);
+          
+          // Store session token in a different key for backup
+          try {
+            localStorage.setItem('consenthub-session-backup', JSON.stringify({
+              userId: session.user.id,
+              timestamp: new Date().toISOString()
+            }));
+          } catch (e) {
+            console.warn('Failed to store session backup', e);
+          }
+          
+          // Get user profile with retries
           const profile = await getUserProfile(session.user.id);
           
           // Combine auth and profile data
@@ -93,6 +119,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               role: userRole,
               organization: profile.organization
             });
+            
+            // Store minimal user data in localStorage as a fallback
+            try {
+              localStorage.setItem('consenthub-user-fallback', JSON.stringify({
+                id: session.user.id,
+                email: session.user.email || '',
+                role: userRole
+              }));
+            } catch (e) {
+              console.warn('Failed to store user fallback', e);
+            }
           } else {
             // No profile but valid session, create minimal user
             console.warn('Session exists but no profile found, creating minimal user');
@@ -103,15 +140,48 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               role: 'client'
             });
           }
+        } else if (tokenInStorage) {
+          // Session token exists but getSession failed - try restoring from fallback
+          console.warn('Token exists but getSession returned no session, checking fallback');
+          
+          try {
+            const fallbackUser = localStorage.getItem('consenthub-user-fallback');
+            if (fallbackUser) {
+              const userData = JSON.parse(fallbackUser);
+              console.log('Using fallback user data from localStorage', userData);
+              setUser(userData);
+              
+              // After setting the user, try to refresh the session
+              supabase.auth.refreshSession();
+            } else {
+              console.warn('No fallback user data found, logging out');
+              setUser(null);
+            }
+          } catch (e) {
+            console.error('Error restoring from fallback', e);
+            setUser(null);
+          }
         } else {
-          // No session found, ensure loading is set to false
+          // No session found, no token in storage
           console.log('No active session found, user not authenticated');
           setUser(null);
         }
       } catch (error) {
         console.error('Session check error:', error);
-        // Don't clear user on session check error, just log it
-        // This prevents automatic logout on transient errors
+        // Check for fallback user data
+        try {
+          const fallbackUser = localStorage.getItem('consenthub-user-fallback');
+          if (fallbackUser) {
+            const userData = JSON.parse(fallbackUser);
+            console.log('Errors occurred but using fallback user data', userData);
+            setUser(userData);
+          } else {
+            setUser(null);
+          }
+        } catch (e) {
+          console.error('Error in fallback handling', e);
+          setUser(null);
+        }
       } finally {
         // Always set loading to false, even if there are errors
         console.log('Session check completed, setting loading to false');

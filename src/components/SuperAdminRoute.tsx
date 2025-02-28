@@ -12,11 +12,18 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
 
   // Removed potentially problematic reload effect
 
+  // Enhanced loading state with a delay to prevent flash redirects
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <div className="animate-spin h-10 w-10 border-4 border-blue-500 rounded-full border-t-transparent mb-4"></div>
+        <p className="text-lg text-gray-700">Loading your dashboard...</p>
+      </div>
+    );
   }
 
-  if (!user) {
+  // Only redirect if explicitly not logged in after loading completes
+  if (user === null) {
     console.log('No user found in SuperAdminRoute, redirecting to login');
     return <Navigate to="/login" replace />;
   }
