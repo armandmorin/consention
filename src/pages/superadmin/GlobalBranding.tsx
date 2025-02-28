@@ -2,8 +2,12 @@ import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { DEFAULT_BRANDING } from '../../config/constants';
 import { Save, RefreshCw } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const GlobalBranding: React.FC = () => {
+  // Get auth context to check loading state
+  const { loading: authLoading } = useAuth();
+  
   // Load saved branding from server or localStorage, or use defaults
   const [branding, setBranding] = useState(() => {
     return {
@@ -20,12 +24,14 @@ const GlobalBranding: React.FC = () => {
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Start with false to prevent double loading state
   const [error, setError] = useState('');
   
   // Load branding settings from localStorage and apply them when component mounts
   useEffect(() => {
-    const loadBranding = () => {
+    // Use setTimeout to ensure this happens after initial render
+    const timer = setTimeout(() => {
+      console.log("Loading branding settings from localStorage");
       setLoading(true);
       setError('');
       
@@ -52,11 +58,12 @@ const GlobalBranding: React.FC = () => {
         console.error('Error loading global branding:', err);
         setError('Failed to load branding settings');
       } finally {
+        // Always ensure loading state is set to false
         setLoading(false);
       }
-    };
+    }, 100);
     
-    loadBranding();
+    return () => clearTimeout(timer);
   }, []);
   
   // Apply branding settings whenever they change
@@ -162,7 +169,7 @@ const GlobalBranding: React.FC = () => {
           <div className="bg-white shadow rounded-lg p-6">
             <h2 className="text-lg font-medium text-gray-900 mb-4">Branding Settings</h2>
             
-            {loading && (
+            {(loading || authLoading) && (
               <div className="mb-4 flex items-center text-blue-500">
                 <div className="animate-spin mr-2 h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
                 <span>Loading settings...</span>
