@@ -39,44 +39,39 @@ function App() {
   React.useEffect(() => {
     console.log('App mounted, initializing...');
     
-    // Initialize and restore session using SessionManager
-    const initializeSession = async () => {
-      try {
-        // Import SessionManager and initialize it
-        const { SessionManager } = await import('./lib/supabase');
-        
-        // Initialize session first
-        await SessionManager.init();
-        
-        // Set up session restoration on visibilitychange events
-        const handleVisibilityChange = async () => {
-          if (document.visibilityState === 'visible') {
-            console.log('Document became visible, restoring session...');
-            await SessionManager.restore();
-          }
-        };
-        
-        // Listen for page visibility changes to restore session
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        
-        // Also restore session on focus
-        window.addEventListener('focus', async () => {
-          console.log('Window focused, restoring session...');
-          await SessionManager.restore();
+    // Initialize session management
+    import('./lib/supabase').then(module => {
+      const { SessionManager } = module;
+      SessionManager.init().then(result => {
+        console.log('Session initialized:', result);
+      });
+    }).catch(err => {
+      console.error('Failed to import SessionManager:', err);
+    });
+    
+    // Set up session restoration handlers with direct function references
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('Document became visible, checking session...');
+        import('./lib/supabase').then(module => {
+          module.SessionManager.restore();
         });
-        
-        // Save that listener for cleanup
-        return () => {
-          document.removeEventListener('visibilitychange', handleVisibilityChange);
-          window.removeEventListener('focus', SessionManager.restore);
-        };
-      } catch (err) {
-        console.error('Session initialization error:', err);
       }
     };
     
-    // Start the session initialization
-    const cleanup = initializeSession();
+    const handleFocus = () => {
+      console.log('Window focused, checking session...');
+      import('./lib/supabase').then(module => {
+        module.SessionManager.restore();
+      });
+    };
+    
+    // Add event listeners
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    // Start session handling and get cleanup function
+    // The cleanup function will be returned by useEffect directly
     
     // Handle 404 redirects from sessionStorage (set by 404.html)
     try {
@@ -107,7 +102,14 @@ function App() {
     };
     
     window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    
+    // Return cleanup function for all event listeners
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      console.log('App cleanup executed');
+    };
   }, []);
   
   return (

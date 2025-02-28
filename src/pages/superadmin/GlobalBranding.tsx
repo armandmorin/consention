@@ -8,8 +8,31 @@ import { useAuth } from '../../contexts/AuthContext';
 const GlobalBranding: React.FC = () => {
   const { user } = useAuth();
   
-  // Load saved branding from Supabase or use defaults
+  // Try to load from sessionStorage first, then fall back to defaults
   const [branding, setBranding] = useState(() => {
+    // Try to get cached settings
+    try {
+      const cachedSettings = sessionStorage.getItem('global_branding_settings');
+      if (cachedSettings) {
+        const parsedCache = JSON.parse(cachedSettings);
+        console.log('Using cached branding settings from state init');
+        
+        return {
+          primaryColor: parsedCache.primaryColor || DEFAULT_BRANDING.primaryColor,
+          secondaryColor: parsedCache.secondaryColor || DEFAULT_BRANDING.secondaryColor,
+          accentColor: parsedCache.accentColor || DEFAULT_BRANDING.accentColor,
+          textColor: parsedCache.textColor || DEFAULT_BRANDING.textColor,
+          backgroundColor: parsedCache.backgroundColor || DEFAULT_BRANDING.backgroundColor,
+          logo: null as File | null,
+          logoPreview: parsedCache.logoPreview || '',
+          appDomain: parsedCache.appDomain || '',
+        };
+      }
+    } catch (err) {
+      console.error('Error reading cached settings:', err);
+    }
+    
+    // Fall back to defaults
     return {
       primaryColor: DEFAULT_BRANDING.primaryColor,
       secondaryColor: DEFAULT_BRANDING.secondaryColor,
