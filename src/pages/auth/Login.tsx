@@ -17,13 +17,14 @@ const Login: React.FC = () => {
   const state = location.state as LocationState;
   const message = state?.message;
   
-  // Reset loading state when component mounts
+  // Handle redirections and cleanup on component mount
   useEffect(() => {
-    // Clear any stale Supabase session on component mount
-    const clearStaleSession = async () => {
-      // Check if user is already logged in
+    console.log('Login page loaded, checking auth state');
+    
+    // Redirect authenticated users
+    const redirectIfLoggedIn = () => {
       if (user) {
-        // If already logged in, redirect
+        console.log(`User already logged in as ${user.role}, redirecting...`);
         if (user.role === 'superadmin') {
           navigate('/superadmin');
         } else if (user.role === 'admin') {
@@ -31,32 +32,37 @@ const Login: React.FC = () => {
         } else if (user.role === 'client') {
           navigate('/client');
         }
-        return;
-      }
-      
-      // Clear local storage on component mount
-      try {
-        const session = await supabase.auth.getSession();
-        if (!session.data.session) {
-          console.log('Clearing any stale auth tokens');
-          localStorage.removeItem('sb-fgnvobekfychilwomxij-auth-token');
-        }
-      } catch (err) {
-        console.error('Error checking session:', err);
       }
     };
     
-    clearStaleSession();
-  }, [user, navigate]);
+    // Add a safety timeout to ensure auth loading is reset
+    const safetyTimer = setTimeout(() => {
+      if (loading) {
+        console.warn('Login page: Auth loading state was stuck, forcing reset');
+        window.dispatchEvent(new Event('auth:forceReset'));
+      }
+    }, 3000);
+    
+    // Check immediately in case we already have user data
+    redirectIfLoggedIn();
+    
+    return () => {
+      clearTimeout(safetyTimer);
+      console.log('Login page unmounted');
+    };
+  }, [user, loading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      console.log('Form submitted, calling login...');
       await login(email, password);
     } catch (err) {
       console.error('Login form error:', err);
       // Reset form on error for a better user experience
       setPassword('');
+      // Force reset loading state if there's an error
+      window.dispatchEvent(new Event('auth:forceReset'));
     }
   };
 

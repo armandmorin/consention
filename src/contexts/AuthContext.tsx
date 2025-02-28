@@ -37,9 +37,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Initialize user from Supabase session
+  // Initialize user from Supabase session - Completely rewritten for reliability
   useEffect(() => {
-    // Function to fetch user profile data from Supabase
+    console.log('Auth provider mounted - setting up authentication');
+    setLoading(true);
+    
+    // Function to fetch user profile data 
     const fetchUserProfile = async (userId: string): Promise<any> => {
       try {
         const { data: profile, error: profileError } = await supabase
@@ -60,95 +63,126 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
     
-    // Main function to check and get the current session
-    const checkSession = async () => {
+    // Process authenticated user data
+    const processAuthenticatedUser = async (userId: string, email: string) => {
+      console.log('Processing authenticated user:', email);
+      
+      // Special case for test superadmin account
+      if (email === 'superadmin@example.com') {
+        console.log('Setting hardcoded superadmin account');
+        setUser({
+          id: userId,
+          email: 'superadmin@example.com',
+          name: 'Super Admin',
+          role: 'superadmin',
+          organization: null
+        });
+        setLoading(false);
+        return;
+      }
+      
+      // For real users, fetch their profile 
+      const profile = await fetchUserProfile(userId);
+      
+      if (profile) {
+        console.log('Found user profile:', profile);
+        
+        // Determine user role from profile
+        let userRole: UserRole = 'client';
+        if (profile.role === 'superadmin') {
+          console.log('User is a superadmin!');
+          userRole = 'superadmin';
+        } else if (profile.role === 'admin') {
+          console.log('User is an admin!');
+          userRole = 'admin';
+        }
+        
+        // Set the user state
+        setUser({
+          id: userId,
+          email: email || '',
+          name: profile.name || '',
+          role: userRole,
+          organization: profile.organization
+        });
+      } else {
+        // Session exists but no profile found (unusual case)
+        console.warn('Session exists but no profile found! Creating minimal user');
+        
+        // Create a minimal user with default client privileges
+        setUser({
+          id: userId,
+          email: email || '',
+          name: email?.split('@')[0] || 'User',
+          role: 'client',
+          organization: null
+        });
+      }
+      
+      setLoading(false);
+    };
+    
+    // Main function to check for an active session
+    const checkForActiveSession = async () => {
       try {
-        console.log('Checking for Supabase authentication state...');
-        setLoading(true);
+        console.log('Checking for active Supabase session...');
         
         // Get current session from Supabase
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Error getting session:', error);
-          setUser(null);
-          return;
+          throw error;
         }
         
-        // If we have a valid session
+        // If we have a valid session, process the user
         if (data.session) {
-          console.log('Found active Supabase session for:', data.session.user.email);
-          
-          // Handle test accounts for development convenience
-          if (data.session.user.email === 'superadmin@example.com') {
-            console.log('Setting hardcoded superadmin account');
-            setUser({
-              id: data.session.user.id,
-              email: 'superadmin@example.com',
-              name: 'Super Admin',
-              role: 'superadmin',
-              organization: null
-            });
-            return;
-          }
-          
-          // For real users, fetch their profile from the database
-          const profile = await fetchUserProfile(data.session.user.id);
-          
-          if (profile) {
-            console.log('Found user profile:', profile);
-            
-            // Determine user role from profile
-            let userRole: UserRole = 'client';
-            if (profile.role === 'superadmin') {
-              console.log('User is a superadmin!');
-              userRole = 'superadmin';
-            } else if (profile.role === 'admin') {
-              console.log('User is an admin!');
-              userRole = 'admin';
-            }
-            
-            // Set the user state
-            setUser({
-              id: data.session.user.id,
-              email: data.session.user.email || '',
-              name: profile.name || '',
-              role: userRole,
-              organization: profile.organization
-            });
-          } else {
-            // Session exists but no profile found (unusual case)
-            console.warn('Session exists but no profile found!');
-            
-            // Create a minimal user with default client privileges
-            setUser({
-              id: data.session.user.id,
-              email: data.session.user.email || '',
-              name: data.session.user.email?.split('@')[0] || 'User',
-              role: 'client',
-              organization: null
-            });
-          }
+          console.log('Found active session for:', data.session.user.email);
+          await processAuthenticatedUser(
+            data.session.user.id, 
+            data.session.user.email || ''
+          );
         } else {
           // No active session
           console.log('No active session found');
           setUser(null);
+          setLoading(false);
         }
       } catch (error) {
-        console.error('Error in session check:', error);
+        console.error('Error checking session:', error);
         setUser(null);
-      } finally {
         setLoading(false);
       }
     };
     
-    // Add a safety timeout to ensure loading state is reset after 3 seconds max
+    // Set up auth state change listener FIRST (this is important)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event);
+        
+        if (event === 'SIGNED_IN' && session) {
+          console.log('User signed in:', session.user.email);
+          await processAuthenticatedUser(
+            session.user.id,
+            session.user.email || ''
+          );
+        } else if (event === 'SIGNED_OUT') {
+          console.log('User signed out');
+          setUser(null);
+          setLoading(false);
+        } else if (event === 'TOKEN_REFRESHED') {
+          console.log('Token refreshed');
+          // No need to update state, just log it
+        }
+      }
+    );
+    
+    // Add a safety timeout to ensure loading state is reset
     const safetyTimer = setTimeout(() => {
       if (loading) {
-        console.warn('Auth loading state was stuck, forcing it to false');
+        console.warn('Auth loading state was stuck for 5 seconds, forcing it to false');
         setLoading(false);
       }
-    }, 3000);
+    }, 5000);
     
     // Listen for force reset events from other components
     const handleForceReset = () => {
@@ -158,58 +192,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     window.addEventListener('auth:forceReset', handleForceReset);
     
-    checkSession();
-    
-    // Set up auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session) {
-          // Get user profile data
-          const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-            
-          if (profileError) {
-            console.error('Error fetching user profile:', profileError);
-            return;
-          }
-          
-          if (profile) {
-            console.log('Profile fetched during auth state change:', profile);
-            
-            // Explicit check for superadmin role
-            let userRole: UserRole = 'client';
-            if (profile.role === 'superadmin') {
-              console.log('User is a superadmin!');
-              userRole = 'superadmin';
-            } else if (profile.role === 'admin') {
-              userRole = 'admin';
-            }
-            
-            setUser({
-              id: session.user.id,
-              email: session.user.email || '',
-              name: profile.name || '',
-              role: userRole,
-              organization: profile.organization
-            });
-            
-            console.log('User role set to:', userRole);
-          }
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-        }
-      }
-    );
+    // Check for active session immediately
+    checkForActiveSession();
     
     return () => {
       subscription.unsubscribe();
       clearTimeout(safetyTimer);
       window.removeEventListener('auth:forceReset', handleForceReset);
     };
-  }, []);
+  }, [loading]);
 
   // Login function
   const login = async (email: string, password: string) => {
@@ -238,7 +229,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       console.log('Authentication successful, session established');
       
-      // For test superadmin account
+      // For test superadmin account - handle immediately
       if (email === 'superadmin@example.com') {
         console.log('Test superadmin account detected');
         
@@ -252,6 +243,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
         
         // Redirect to superadmin dashboard
+        setLoading(false); // Set loading to false before redirect
         navigate('/superadmin');
         return;
       }
@@ -299,6 +291,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             };
             
             setUser(minimalUser);
+            setLoading(false); // Set loading to false before redirect
             navigate('/client');
             return;
           }
@@ -315,6 +308,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(userWithNewProfile);
           
           // Redirect to client dashboard
+          setLoading(false); // Set loading to false before redirect
           navigate('/client');
           return;
         }
@@ -328,6 +322,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         
         setUser(minimalUser);
+        setLoading(false); // Set loading to false before redirect
         navigate('/client');
         return;
       }
@@ -358,6 +353,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       console.log('Login successful, redirecting to dashboard');
       
+      // Set loading to false before redirect
+      setLoading(false);
+      
       // Redirect based on role
       if (userRole === 'superadmin') {
         navigate('/superadmin');
@@ -370,8 +368,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error('Login failed:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during login');
       setUser(null);
-    } finally {
-      setLoading(false);
+      setLoading(false); // Ensure loading is set to false on error
     }
   };
 

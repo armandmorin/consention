@@ -10,7 +10,18 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // Removed potentially problematic reload effect
+  // Force authentication state reset if taking too long
+  React.useEffect(() => {
+    // Dispatch safety event after 4 seconds if still loading
+    const safetyTimer = setTimeout(() => {
+      if (loading) {
+        console.warn('SuperAdminRoute: Loading stuck for 4 seconds, forcing reset');
+        window.dispatchEvent(new Event('auth:forceReset'));
+      }
+    }, 4000);
+    
+    return () => clearTimeout(safetyTimer);
+  }, [loading]);
 
   // Enhanced loading state with a delay to prevent flash redirects
   if (loading) {
