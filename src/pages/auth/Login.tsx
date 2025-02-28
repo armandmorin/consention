@@ -66,6 +66,28 @@ const Login: React.FC = () => {
     }
   };
 
+  // Local loading state to avoid using context loading state
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Modified submit handler that uses local state
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (isSubmitting) return; // Prevent multiple submissions
+    
+    try {
+      setIsSubmitting(true);
+      console.log('Form submitted, calling login...');
+      await login(email, password);
+    } catch (err) {
+      console.error('Login form error:', err);
+      setPassword('');
+      setIsSubmitting(false);
+      // Force reset the auth loading state if there's an error
+      window.dispatchEvent(new Event('auth:forceReset'));
+    }
+  };
+  
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -109,7 +131,7 @@ const Login: React.FC = () => {
             </div>
           )}
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
+          <form className="space-y-6" onSubmit={handleFormSubmit}>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email address
@@ -176,10 +198,10 @@ const Login: React.FC = () => {
             <div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={isSubmitting}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                {loading ? 'Signing in...' : 'Sign in'}
+                {isSubmitting ? 'Signing in...' : 'Sign in'}
               </button>
             </div>
           </form>

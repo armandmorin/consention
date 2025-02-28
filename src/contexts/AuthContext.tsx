@@ -40,7 +40,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Initialize user from Supabase session - Completely rewritten for reliability
   useEffect(() => {
     console.log('Auth provider mounted - setting up authentication');
-    setLoading(true);
     
     // Function to fetch user profile data 
     const fetchUserProfile = async (userId: string): Promise<any> => {
@@ -67,21 +66,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const processAuthenticatedUser = async (userId: string, email: string) => {
       console.log('Processing authenticated user:', email);
       
-      // Special case for test superadmin account
-      if (email === 'superadmin@example.com') {
-        console.log('Setting hardcoded superadmin account');
-        setUser({
-          id: userId,
-          email: 'superadmin@example.com',
-          name: 'Super Admin',
-          role: 'superadmin',
-          organization: null
-        });
-        setLoading(false);
-        return;
-      }
-      
-      // For real users, fetch their profile 
+      // For all users, fetch their profile from database
       const profile = await fetchUserProfile(userId);
       
       if (profile) {
@@ -126,17 +111,66 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const checkForActiveSession = async () => {
       try {
         console.log('Checking for active Supabase session...');
+        setLoading(true);
         
         // Get current session from Supabase
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
-          throw error;
+          console.error('Error getting session:', error);
+          setUser(null);
+          setLoading(false);
+          return;
         }
         
         // If we have a valid session, process the user
         if (data.session) {
           console.log('Found active session for:', data.session.user.email);
+          console.log('User ID:', data.session.user.id);
+          
+          // Force fetch the current user's profile
+          try {
+            const { data: profile, error: profileError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', data.session.user.id)
+              .single();
+            
+            if (profileError) {
+              console.error('Error fetching profile after session check:', profileError);
+              setUser(null);
+              setLoading(false);
+              return;
+            }
+            
+            if (profile) {
+              console.log('Found user profile directly:', profile);
+              
+              // Determine user role from profile
+              let userRole: UserRole = 'client';
+              if (profile.role === 'superadmin') {
+                console.log('User is a superadmin!');
+                userRole = 'superadmin';
+              } else if (profile.role === 'admin') {
+                console.log('User is an admin!');
+                userRole = 'admin';
+              }
+              
+              setUser({
+                id: data.session.user.id,
+                email: data.session.user.email || '',
+                name: profile.name || '',
+                role: userRole,
+                organization: profile.organization
+              });
+              setLoading(false);
+              return;
+            }
+          } catch (profileErr) {
+            console.error('Unexpected error fetching profile:', profileErr);
+          }
+          
+          // If direct profile fetch failed, try the standard process
           await processAuthenticatedUser(
             data.session.user.id, 
             data.session.user.email || ''
@@ -161,6 +195,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         if (event === 'SIGNED_IN' && session) {
           console.log('User signed in:', session.user.email);
+          setLoading(true);
           await processAuthenticatedUser(
             session.user.id,
             session.user.email || ''
@@ -200,7 +235,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       clearTimeout(safetyTimer);
       window.removeEventListener('auth:forceReset', handleForceReset);
     };
-  }, [loading]);
+  }, []);
 
   // Login function
   const login = async (email: string, password: string) => {
@@ -229,31 +264,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       console.log('Authentication successful, session established');
       
-      // For test superadmin account - handle immediately
-      if (email === 'superadmin@example.com') {
-        console.log('Test superadmin account detected');
-        
-        // Set user state directly
-        setUser({
-          id: data.user.id,
-          email: 'superadmin@example.com',
-          name: 'Super Admin',
-          role: 'superadmin' as UserRole,
-          organization: null
-        });
-        
-        // Redirect to superadmin dashboard
-        setLoading(false); // Set loading to false before redirect
-        navigate('/superadmin');
-        return;
-      }
-      
-      // For real users, get profile data
+      // Fetch the user's profile directly from the database
+      console.log('Fetching user profile for ID:', data.user.id);
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', data.user.id)
         .single();
+        
+      console.log('Profile query result:', profile, profileError);
         
       // Handle profile data retrieval
       if (profileError) {
@@ -313,7 +332,56 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return;
         }
         
-        // For other profile errors, continue with minimal user info
+        // For other profile errors, log detailed error and try to recover
+        console.error('Profile fetch error details:', {
+          code: profileError.code, 
+          message: profileError.message,
+          details: profileError.details,
+          hint: profileError.hint
+        });
+        
+        // Try a more direct approach with a raw query
+        try {
+          console.log('Attempting raw profile lookup for:', data.user.id);
+          const { data: rawProfile, error: rawError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.user.id);
+            
+          console.log('Raw profile lookup result:', rawProfile, rawError);
+          
+          if (rawProfile && Array.isArray(rawProfile) && rawProfile.length > 0 && !rawError) {
+            // We got a profile via direct query, use it
+            const firstProfile = rawProfile[0];
+            console.log('Using first profile from direct query:', firstProfile);
+            
+            const userWithRawProfile = {
+              id: data.user.id,
+              email: data.user.email || '',
+              name: firstProfile.name || email.split('@')[0],
+              role: (firstProfile.role as UserRole) || 'client',
+              organization: firstProfile.organization
+            };
+            
+            setUser(userWithRawProfile);
+            setLoading(false);
+            
+            // Redirect based on role
+            if (userWithRawProfile.role === 'superadmin') {
+              navigate('/superadmin');
+            } else if (userWithRawProfile.role === 'admin') {
+              navigate('/admin');
+            } else {
+              navigate('/client');
+            }
+            return;
+          }
+        } catch (rpcError) {
+          console.error('RPC lookup failed:', rpcError);
+        }
+        
+        // Last resort: Continue with minimal user info
+        console.log('Using minimal user info as last resort');
         const minimalUser = {
           id: data.user.id,
           email: data.user.email || '',
