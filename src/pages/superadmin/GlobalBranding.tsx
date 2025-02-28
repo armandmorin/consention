@@ -2,10 +2,13 @@ import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { DEFAULT_BRANDING } from '../../config/constants';
 import { Save, RefreshCw, RefreshCcw } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 const GlobalBranding: React.FC = () => {
+  const { user } = useAuth();
   
-  // Load saved branding from server or localStorage, or use defaults
+  // Load saved branding from Supabase or use defaults
   const [branding, setBranding] = useState(() => {
     return {
       primaryColor: DEFAULT_BRANDING.primaryColor,
@@ -21,12 +24,12 @@ const GlobalBranding: React.FC = () => {
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(false); // Start with false to prevent double loading state
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  // Load branding settings from localStorage and apply them when component mounts
+  // Load branding settings from Supabase and apply them when component mounts
   useEffect(() => {
-    // Safety mechanism to clear loading state if it gets stuck (after 3 seconds)
+    // Safety mechanism to clear loading state if it gets stuck
     const safetyTimer = setTimeout(() => {
       if (loading) {
         console.warn("Loading state was stuck, forcing it to false");
@@ -34,47 +37,58 @@ const GlobalBranding: React.FC = () => {
       }
     }, 3000);
     
-    // Start loading the branding settings immediately
-    const loadBrandingSettings = () => {
-      console.log("Loading branding settings from localStorage");
-      // Set loading to true, but don't depend on authLoading
+    // Start loading the branding settings from Supabase
+    const loadBrandingSettings = async () => {
+      console.log("Loading branding settings from Supabase");
       setLoading(true);
       setError('');
       
       try {
-        // Load from localStorage with safeguards
-        let savedBranding;
-        try {
-          savedBranding = localStorage.getItem('globalBranding');
-        } catch (storageError) {
-          console.error('Error accessing localStorage:', storageError);
-          throw new Error('Cannot access browser storage');
+        // Get branding settings from Supabase
+        const { data, error } = await supabase
+          .from('global_settings')
+          .select('*')
+          .eq('type', 'branding')
+          .single();
+        
+        if (error) {
+          // If no settings found, this is likely the first time - not an error
+          if (error.code === 'PGRST116') {
+            console.log('No branding settings found, using defaults');
+          } else {
+            console.error('Error loading settings from Supabase:', error);
+            throw error;
+          }
         }
         
-        if (savedBranding) {
+        // If we have data, use it
+        if (data && data.settings) {
+          console.log('Loaded branding from Supabase:', data.settings);
+          
+          // Validate the parsed data
           try {
-            const parsed = JSON.parse(savedBranding);
-            console.log('Loaded branding from localStorage:', parsed);
-            
-            // Validate the parsed data
-            if (typeof parsed === 'object' && parsed !== null) {
+            const settings = typeof data.settings === 'string' 
+              ? JSON.parse(data.settings) 
+              : data.settings;
+              
+            if (typeof settings === 'object' && settings !== null) {
               setBranding(prev => ({
                 ...prev,
                 // Only apply valid properties
-                primaryColor: parsed.primaryColor || prev.primaryColor,
-                secondaryColor: parsed.secondaryColor || prev.secondaryColor,
-                accentColor: parsed.accentColor || prev.accentColor,
-                textColor: parsed.textColor || prev.textColor,
-                backgroundColor: parsed.backgroundColor || prev.backgroundColor,
-                logoPreview: parsed.logoPreview || prev.logoPreview,
-                appDomain: parsed.appDomain || prev.appDomain,
+                primaryColor: settings.primaryColor || prev.primaryColor,
+                secondaryColor: settings.secondaryColor || prev.secondaryColor,
+                accentColor: settings.accentColor || prev.accentColor,
+                textColor: settings.textColor || prev.textColor,
+                backgroundColor: settings.backgroundColor || prev.backgroundColor,
+                logoPreview: settings.logoPreview || prev.logoPreview,
+                appDomain: settings.appDomain || prev.appDomain,
                 logo: null as File | null
               }));
             } else {
               throw new Error('Invalid branding data format');
             }
           } catch (e) {
-            console.error('Error parsing saved global branding from localStorage:', e);
+            console.error('Error parsing saved global branding from Supabase:', e);
             // Fallback to defaults on error
             setBranding(prev => ({
               ...prev,
@@ -86,9 +100,9 @@ const GlobalBranding: React.FC = () => {
             }));
             setError('Error loading saved branding settings, reverting to defaults');
           }
-        } else {
-          console.log('No saved branding found, using defaults');
         }
+        
+        // If we reach here with no data, defaults will be used (already set in useState)
       } catch (err) {
         console.error('Error loading global branding:', err);
         setError('Failed to load branding settings');
@@ -98,7 +112,7 @@ const GlobalBranding: React.FC = () => {
       }
     };
     
-    // Load settings immediately, don't wait for authLoading
+    // Load settings when the component mounts
     loadBrandingSettings();
     
     // Clean up timer on unmount
@@ -144,7 +158,7 @@ const GlobalBranding: React.FC = () => {
     }
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     // Reset to defaults
     const defaultBranding = {
       primaryColor: DEFAULT_BRANDING.primaryColor,
@@ -158,17 +172,41 @@ const GlobalBranding: React.FC = () => {
     };
     
     setBranding(defaultBranding);
+    setSaving(true);
     
-    // Clear saved settings
-    localStorage.removeItem('globalBranding');
-    console.log('Global branding settings reset to defaults');
-    
-    // Show success message
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    try {
+      // Delete the settings from Supabase
+      const { error } = await supabase
+        .from('global_settings')
+        .delete()
+        .eq('type', 'branding');
+        
+      if (error) {
+        console.error('Error deleting branding settings from Supabase:', error);
+        throw error;
+      }
+      
+      // Also update brandSettings for components
+      localStorage.setItem('brandSettings', JSON.stringify({
+        logo: '',
+        primaryColor: DEFAULT_BRANDING.primaryColor,
+        secondaryColor: DEFAULT_BRANDING.secondaryColor,
+      }));
+      
+      console.log('Global branding settings reset to defaults');
+      
+      // Show success message
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      console.error('Error resetting branding settings:', error);
+      setError('Failed to reset branding settings. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
     setError('');
     
@@ -184,26 +222,48 @@ const GlobalBranding: React.FC = () => {
         appDomain: branding.appDomain
       };
       
-      // Save to localStorage - Use try/catch for each storage operation
-      try {
-        localStorage.setItem('globalBranding', JSON.stringify(brandingToSave));
-        console.log('Global branding settings saved to localStorage:', brandingToSave);
-      } catch (storageError) {
-        console.error('Error saving to localStorage:', storageError);
-        throw new Error('Browser storage is full or unavailable');
+      // Check if settings already exist for update or insert
+      const { data: existingSettings } = await supabase
+        .from('global_settings')
+        .select('id')
+        .eq('type', 'branding')
+        .single();
+      
+      let result;
+      
+      if (existingSettings) {
+        // Update existing settings
+        result = await supabase
+          .from('global_settings')
+          .update({ 
+            settings: brandingToSave,
+            updated_at: new Date().toISOString()
+          })
+          .eq('type', 'branding');
+      } else {
+        // Insert new settings
+        result = await supabase
+          .from('global_settings')
+          .insert([{ 
+            type: 'branding', 
+            settings: brandingToSave,
+            created_by: user?.id || null
+          }]);
       }
       
-      // Update the brandSettings that's used by other components
-      try {
-        localStorage.setItem('brandSettings', JSON.stringify({
-          logo: brandingToSave.logoPreview,
-          primaryColor: brandingToSave.primaryColor,
-          secondaryColor: brandingToSave.secondaryColor,
-        }));
-      } catch (storageError) {
-        console.warn('Unable to save brand settings', storageError);
-        // Non-critical, don't throw
+      if (result.error) {
+        console.error('Error saving branding to Supabase:', result.error);
+        throw result.error;
       }
+      
+      console.log('Global branding settings saved to Supabase:', brandingToSave);
+      
+      // Also update brandSettings in localStorage for UI components that use it
+      localStorage.setItem('brandSettings', JSON.stringify({
+        logo: brandingToSave.logoPreview,
+        primaryColor: brandingToSave.primaryColor,
+        secondaryColor: brandingToSave.secondaryColor,
+      }));
       
       // Apply the branding settings to the document
       document.documentElement.style.setProperty('--global-primary-color', branding.primaryColor);
@@ -221,66 +281,80 @@ const GlobalBranding: React.FC = () => {
     }
   };
 
-  // Reset loading state and refresh branding settings
-  const handleRefreshBranding = () => {
+  // Reset loading state and refresh branding settings from Supabase
+  const handleRefreshBranding = async () => {
     setLoading(true);
+    setError('');
     
     try {
-      // Clear error state
-      setError('');
+      // Fetch the latest settings from Supabase
+      const { data, error } = await supabase
+        .from('global_settings')
+        .select('*')
+        .eq('type', 'branding')
+        .single();
       
-      // Load from localStorage with safeguards
-      let savedBranding;
-      try {
-        savedBranding = localStorage.getItem('globalBranding');
-      } catch (storageError) {
-        console.error('Error accessing localStorage:', storageError);
-        throw new Error('Cannot access browser storage');
-      }
-      
-      if (savedBranding) {
-        try {
-          const parsed = JSON.parse(savedBranding);
-          console.log('Refreshed branding from localStorage:', parsed);
-          
-          // Validate the parsed data
-          if (typeof parsed === 'object' && parsed !== null) {
-            setBranding(prev => ({
-              ...prev,
-              // Only apply valid properties
-              primaryColor: parsed.primaryColor || prev.primaryColor,
-              secondaryColor: parsed.secondaryColor || prev.secondaryColor,
-              accentColor: parsed.accentColor || prev.accentColor,
-              textColor: parsed.textColor || prev.textColor,
-              backgroundColor: parsed.backgroundColor || prev.backgroundColor,
-              logoPreview: parsed.logoPreview || prev.logoPreview,
-              appDomain: parsed.appDomain || prev.appDomain,
-              logo: null as File | null
-            }));
-          } else {
-            throw new Error('Invalid branding data format');
-          }
-        } catch (e) {
-          console.error('Error parsing saved global branding from localStorage:', e);
-          // Fallback to defaults on error
-          setBranding(prev => ({
-            ...prev,
+      if (error) {
+        // If no settings found, this might be the first time - not an error
+        if (error.code === 'PGRST116') {
+          console.log('No branding settings found in database');
+          // Revert to defaults
+          setBranding({
             primaryColor: DEFAULT_BRANDING.primaryColor,
             secondaryColor: DEFAULT_BRANDING.secondaryColor,
             accentColor: DEFAULT_BRANDING.accentColor,
             textColor: DEFAULT_BRANDING.textColor,
             backgroundColor: DEFAULT_BRANDING.backgroundColor,
-          }));
-          setError('Error loading saved branding settings, reverting to defaults');
+            logo: null,
+            logoPreview: '',
+            appDomain: '',
+          });
+        } else {
+          console.error('Error fetching branding settings:', error);
+          throw error;
         }
-      } else {
-        console.log('No saved branding found, using defaults');
+      } else if (data && data.settings) {
+        // Process the settings
+        console.log('Refreshed branding from Supabase:', data.settings);
+        
+        // Handle different formats (string or object)
+        const settings = typeof data.settings === 'string' 
+          ? JSON.parse(data.settings) 
+          : data.settings;
+        
+        // Validate and apply the settings
+        if (typeof settings === 'object' && settings !== null) {
+          setBranding(prev => ({
+            ...prev,
+            // Only apply valid properties
+            primaryColor: settings.primaryColor || prev.primaryColor,
+            secondaryColor: settings.secondaryColor || prev.secondaryColor,
+            accentColor: settings.accentColor || prev.accentColor,
+            textColor: settings.textColor || prev.textColor,
+            backgroundColor: settings.backgroundColor || prev.backgroundColor,
+            logoPreview: settings.logoPreview || prev.logoPreview,
+            appDomain: settings.appDomain || prev.appDomain,
+            logo: null as File | null
+          }));
+          
+          // Update brandSettings in localStorage for components
+          localStorage.setItem('brandSettings', JSON.stringify({
+            logo: settings.logoPreview,
+            primaryColor: settings.primaryColor,
+            secondaryColor: settings.secondaryColor,
+          }));
+          
+          // Apply to CSS variables
+          document.documentElement.style.setProperty('--global-primary-color', settings.primaryColor);
+          document.documentElement.style.setProperty('--global-secondary-color', settings.secondaryColor);
+        } else {
+          throw new Error('Invalid branding data format');
+        }
       }
     } catch (err) {
-      console.error('Error loading global branding:', err);
-      setError('Failed to load branding settings');
+      console.error('Error refreshing branding settings:', err);
+      setError('Failed to refresh branding settings from the database');
     } finally {
-      // Always ensure loading state is set to false
       setLoading(false);
     }
   };
