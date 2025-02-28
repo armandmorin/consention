@@ -39,71 +39,38 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Initialize user from Supabase session
   useEffect(() => {
-    console.log('AuthContext initializing, checking session');
-    
-    // Function to get user profile data with retries
-    const getUserProfile = async (userId: string, retries = 2): Promise<any> => {
-      try {
-        // Get user profile data from profiles table
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single();
-          
-        if (profileError) {
-          if (retries > 0) {
-            console.warn(`Error fetching profile, retrying... (${retries} left)`);
-            // Wait 500ms before retry
-            await new Promise(r => setTimeout(r, 500));
-            return getUserProfile(userId, retries - 1);
-          }
-          console.error('Error fetching user profile after retries:', profileError);
-          throw profileError;
-        }
-        
-        return profile;
-      } catch (error) {
-        console.error('Get user profile error:', error);
-        return null;
-      }
-    };
-    
-    // Check current session
+    // Direct simple implementation that just checks session
     const checkSession = async () => {
       try {
         setLoading(true);
         
-        // Do not set loading to false immediately to prevent race conditions
-        // First check if we have a session in storage (manual check)
-        const tokenInStorage = Object.keys(localStorage).some(key => 
-          key.startsWith('sb-') && key.includes('auth-token')
-        );
+        // Check for manual persistence
+        try {
+          const savedUser = localStorage.getItem('consenthub-user');
+          if (savedUser) {
+            console.log('Found saved user in localStorage');
+            setUser(JSON.parse(savedUser));
+            return; // Skip Supabase check if we have a saved user
+          }
+        } catch (e) {
+          console.warn('Error checking localStorage for saved user', e);
+        }
         
-        console.log('Checking for session token in localStorage:', tokenInStorage ? 'Found' : 'Not found');
-        
-        // Get current session directly
+        // Get current session
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session) {
-          console.log('Active session found, fetching user profile', session.user.id);
+          console.log('Active session found, user ID:', session.user.id);
           
-          // Store session token in a different key for backup
-          try {
-            localStorage.setItem('consenthub-session-backup', JSON.stringify({
-              userId: session.user.id,
-              timestamp: new Date().toISOString()
-            }));
-          } catch (e) {
-            console.warn('Failed to store session backup', e);
-          }
-          
-          // Get user profile with retries
-          const profile = await getUserProfile(session.user.id);
-          
-          // Combine auth and profile data
+          // Get user profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+            
           if (profile) {
-            // Explicit check for superadmin role
+            // Determine user role
             let userRole: UserRole = 'client';
             if (profile.role === 'superadmin') {
               console.log('User is a superadmin!');
@@ -112,79 +79,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               userRole = 'admin';
             }
             
-            setUser({
+            // Create user object
+            const userData = {
               id: session.user.id,
               email: session.user.email || '',
               name: profile.name || '',
               role: userRole,
               organization: profile.organization
-            });
+            };
             
-            // Store minimal user data in localStorage as a fallback
-            try {
-              localStorage.setItem('consenthub-user-fallback', JSON.stringify({
-                id: session.user.id,
-                email: session.user.email || '',
-                role: userRole
-              }));
-            } catch (e) {
-              console.warn('Failed to store user fallback', e);
-            }
+            // Save to state
+            setUser(userData);
+            
+            // Save to localStorage for persistence across refreshes
+            localStorage.setItem('consenthub-user', JSON.stringify(userData));
           } else {
-            // No profile but valid session, create minimal user
-            console.warn('Session exists but no profile found, creating minimal user');
-            setUser({
-              id: session.user.id,
-              email: session.user.email || '',
-              name: session.user.user_metadata?.name || 'User',
-              role: 'client'
-            });
-          }
-        } else if (tokenInStorage) {
-          // Session token exists but getSession failed - try restoring from fallback
-          console.warn('Token exists but getSession returned no session, checking fallback');
-          
-          try {
-            const fallbackUser = localStorage.getItem('consenthub-user-fallback');
-            if (fallbackUser) {
-              const userData = JSON.parse(fallbackUser);
-              console.log('Using fallback user data from localStorage', userData);
-              setUser(userData);
-              
-              // After setting the user, try to refresh the session
-              supabase.auth.refreshSession();
-            } else {
-              console.warn('No fallback user data found, logging out');
-              setUser(null);
-            }
-          } catch (e) {
-            console.error('Error restoring from fallback', e);
+            // No profile found
             setUser(null);
           }
         } else {
-          // No session found, no token in storage
-          console.log('No active session found, user not authenticated');
+          // No active session
           setUser(null);
         }
       } catch (error) {
-        console.error('Session check error:', error);
-        // Check for fallback user data
-        try {
-          const fallbackUser = localStorage.getItem('consenthub-user-fallback');
-          if (fallbackUser) {
-            const userData = JSON.parse(fallbackUser);
-            console.log('Errors occurred but using fallback user data', userData);
-            setUser(userData);
-          } else {
-            setUser(null);
-          }
-        } catch (e) {
-          console.error('Error in fallback handling', e);
-          setUser(null);
-        }
+        console.error('Error checking session:', error);
+        setUser(null);
       } finally {
-        // Always set loading to false, even if there are errors
-        console.log('Session check completed, setting loading to false');
         setLoading(false);
       }
     };
@@ -277,7 +197,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (data.session) {
         try {
           // Get user profile
-          // FIXED QUERY - The previous syntax might have issues
           console.log('Fetching profile for user ID:', data.user.id);
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
@@ -321,7 +240,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 organization: newProfile.organization
               };
               
+              // Save user to state and localStorage
               setUser(userWithNewProfile);
+              localStorage.setItem('consenthub-user', JSON.stringify(userWithNewProfile));
               
               // Redirect based on role
               navigate('/client');
@@ -352,7 +273,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           };
           
           console.log('User role set to:', userRole);
+          
+          // Save user to state and localStorage
           setUser(userWithProfile);
+          localStorage.setItem('consenthub-user', JSON.stringify(userWithProfile));
           
           // Redirect based on role
           if (userRole === 'superadmin') {
@@ -374,7 +298,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             role: 'client' as UserRole
           };
           
+          // Save minimal user to state and localStorage
           setUser(minimalUser);
+          localStorage.setItem('consenthub-user', JSON.stringify(minimalUser));
+          
           navigate('/client');
         }
       }
@@ -394,19 +321,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Clear local state
       setUser(null);
       
-      // Clear all localStorage items that might hold state
-      localStorage.removeItem('sb-fgnvobekfychilwomxij-auth-token');
-      localStorage.removeItem('consenthub-auth');
+      // Clear our custom user storage
+      localStorage.removeItem('consenthub-user');
+      
+      // Clear settings
       localStorage.removeItem('globalBranding');
       localStorage.removeItem('brandSettings');
-      
-      // Clear any other localStorage items to ensure clean state
-      const localStorageKeys = Object.keys(localStorage);
-      localStorageKeys.forEach(key => {
-        if (key.startsWith('sb-') || key.includes('supabase') || key.includes('consent')) {
-          localStorage.removeItem(key);
-        }
-      });
       
       // Sign out from Supabase
       await supabase.auth.signOut();
