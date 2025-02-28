@@ -7,21 +7,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
-// Create the Supabase client
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    // Don't use detectSessionInUrl as it can cause issues with session handling
-    detectSessionInUrl: false
-  }
-})
+// Create the Supabase client with absolute minimal configuration
+// We're using the default settings which are known to work correctly
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey)
 
-// Export a function to get a fresh client - useful for debugging
-export const getSupabase = () => createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false
+// Simple function to check if a user has a valid session
+export const hasValidSession = async (): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase.auth.getSession()
+    return !error && data.session !== null
+  } catch {
+    return false
   }
-})
+}

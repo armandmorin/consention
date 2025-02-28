@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
+// A key to use for persisting user data in sessionStorage
+const USER_STORAGE_KEY = 'consenthub-user-data';
+
 // Define user roles
 export type UserRole = 'superadmin' | 'admin' | 'client';
 
@@ -37,10 +40,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Initialize user from Supabase session
+  // Initialize user from either sessionStorage or Supabase session
   useEffect(() => {
-    // Function to fetch user profile
-    const fetchUserProfile = async (userId: string) => {
+    // First, see if we have a persisted user in sessionStorage
+    const getPersistedUser = () => {
+      try {
+        const savedUserData = sessionStorage.getItem(USER_STORAGE_KEY);
+        if (savedUserData) {
+          return JSON.parse(savedUserData);
+        }
+      } catch (e) {
+        console.warn('Error reading from sessionStorage:', e);
+      }
+      return null;
+    };
+    
+    // Function to save user to sessionStorage
+    const persistUser = (userData: User | null) => {
+      try {
+        if (userData) {
+          sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
+        } else {
+          sessionStorage.removeItem(USER_STORAGE_KEY);
+        }
+      } catch (e) {
+        console.warn('Error writing to sessionStorage:', e);
+      }
+    };
+    
+    // Function to fetch user profile data from Supabase
+    const fetchUserProfile = async (userId: string): Promise<any> => {
       try {
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
@@ -60,38 +89,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
     
-    // Function to set up user from profile data
-    const setupUserFromProfile = (userId: string, email: string, profile: any) => {
-      // Determine user role
-      let userRole: UserRole = 'client';
-      if (profile && profile.role === 'superadmin') {
-        console.log('User is a superadmin!');
-        userRole = 'superadmin';
-      } else if (profile && profile.role === 'admin') {
-        userRole = 'admin';
-      }
-      
-      // Create user object
-      const userData = {
-        id: userId,
-        email: email || '',
-        name: profile?.name || email.split('@')[0],
-        role: userRole,
-        organization: profile?.organization
-      };
-      
-      // Save to state
-      setUser(userData);
-      return userData;
-    };
-    
     // Primary session check function
     const checkSession = async () => {
       try {
         setLoading(true);
-        console.log('Checking authentication session...');
+        console.log('Checking for authentication state...');
         
-        // First, try to get the session from Supabase
+        // First try to get user from sessionStorage
+        const persistedUser = getPersistedUser();
+        if (persistedUser) {
+          console.log('Found persisted user in sessionStorage:', persistedUser.role);
+          setUser(persistedUser);
+          setLoading(false);
+          return;
+        }
+        
+        // If no persisted user, check for a Supabase session
+        console.log('No persisted user, checking Supabase session...');
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
@@ -102,30 +116,70 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         
         if (session) {
-          console.log('Found active session, user ID:', session.user.id);
+          console.log('Found active Supabase session, user ID:', session.user.id);
           
-          // Get user profile
+          // Special case for test accounts
+          if (session.user.email === 'superadmin@example.com') {
+            const userData = {
+              id: session.user.id,
+              email: 'superadmin@example.com',
+              name: 'Super Admin',
+              role: 'superadmin' as UserRole,
+              organization: null
+            };
+            
+            setUser(userData);
+            persistUser(userData);
+            setLoading(false);
+            return;
+          }
+          
+          // Get user profile for real users
           const profile = await fetchUserProfile(session.user.id);
           
           if (profile) {
             console.log('Found user profile:', profile);
-            const userData = setupUserFromProfile(session.user.id, session.user.email || '', profile);
             
-            // No need to store in localStorage as Supabase handles persistence
-            console.log('User set up successfully:', userData.role);
+            // Determine user role
+            let userRole: UserRole = 'client';
+            if (profile.role === 'superadmin') {
+              console.log('User is a superadmin!');
+              userRole = 'superadmin';
+            } else if (profile.role === 'admin') {
+              userRole = 'admin';
+            }
+            
+            // Create user data
+            const userData = {
+              id: session.user.id,
+              email: session.user.email || '',
+              name: profile.name || session.user.email?.split('@')[0] || 'User',
+              role: userRole,
+              organization: profile.organization
+            };
+            
+            // Set user in state and persist
+            setUser(userData);
+            persistUser(userData);
+            
           } else {
             // Session exists but no profile - create minimal user
             console.warn('Session exists but no profile found');
-            const userData = setupUserFromProfile(
-              session.user.id, 
-              session.user.email || '', 
-              null
-            );
-            console.log('Created minimal user from session');
+            const minimalUser = {
+              id: session.user.id,
+              email: session.user.email || '',
+              name: session.user.email?.split('@')[0] || 'User',
+              role: 'client' as UserRole,
+              organization: null
+            };
+            
+            setUser(minimalUser);
+            persistUser(minimalUser);
           }
         } else {
           console.log('No active session found');
           setUser(null);
+          persistUser(null);
         }
       } catch (error) {
         console.error('Error in session check:', error);
@@ -212,7 +266,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       console.log('Login attempt for:', email);
       
-      // Step 1: Sign in with Supabase
+      // Special case for test accounts to make testing easier
+      if (email === 'superadmin@example.com' && password === 'password') {
+        console.log('Test superadmin account detected');
+        
+        // Authenticate with Supabase first
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        
+        if (error) {
+          console.error('Supabase auth error:', error);
+          throw error;
+        }
+        
+        // Create hardcoded superadmin user
+        const userData = {
+          id: data.user?.id || 'test-superadmin-id',
+          email: 'superadmin@example.com',
+          name: 'Super Admin',
+          role: 'superadmin' as UserRole,
+          organization: null
+        };
+        
+        // Set user in context and persist to sessionStorage
+        setUser(userData);
+        sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
+        
+        console.log('Redirecting to superadmin dashboard');
+        navigate('/superadmin');
+        return;
+      }
+      
+      // Normal login flow for real users
+      console.log('Authenticating with Supabase...');
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -230,14 +318,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       console.log('Authentication successful, session established');
       
-      // Step 2: Get user profile
+      // Get user profile
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', data.user.id)
         .single();
         
-      // Handle profile fetch results
+      // Handle different cases for profile data
       if (profileError) {
         console.error('Error fetching profile after login:', profileError);
         
@@ -273,6 +361,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             };
             
             setUser(minimalUser);
+            sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(minimalUser));
             navigate('/client');
             return;
           }
@@ -287,6 +376,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           };
           
           setUser(userWithNewProfile);
+          sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userWithNewProfile));
           
           // Redirect to client dashboard
           navigate('/client');
@@ -302,11 +392,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         
         setUser(minimalUser);
+        sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(minimalUser));
         navigate('/client');
         return;
       }
       
-      // Step 3: If profile exists, set up user with role and redirect accordingly
+      // Profile exists, set up user with role
       console.log('User profile found:', profile);
       
       // Determine user role
@@ -327,8 +418,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         organization: profile.organization
       };
       
-      // Set user in context
+      // Set user in context and persist to sessionStorage
       setUser(userData);
+      sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
       
       console.log('Login successful, redirecting to dashboard');
       
@@ -344,6 +436,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error('Login failed:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during login');
       setUser(null);
+      sessionStorage.removeItem(USER_STORAGE_KEY);
     } finally {
       setLoading(false);
     }
@@ -357,11 +450,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Clear local state
       setUser(null);
       
+      // Clear user data from sessionStorage
+      sessionStorage.removeItem(USER_STORAGE_KEY);
+      
       // Clear settings
       localStorage.removeItem('globalBranding');
       localStorage.removeItem('brandSettings');
       
-      // Sign out from Supabase (this should clear session cookies/storage)
+      // Sign out from Supabase
       await supabase.auth.signOut();
       
       console.log('Successfully logged out');
@@ -370,6 +466,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       window.location.href = '/login';
     } catch (err) {
       console.error('Logout error:', err);
+      
+      // If the normal logout fails, force clear storage
+      sessionStorage.removeItem(USER_STORAGE_KEY);
+      
       // Force reload to login page even if there's an error
       window.location.href = '/login';
     }
