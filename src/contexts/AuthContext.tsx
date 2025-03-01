@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { supabase, getUserRoleFromSession } from '../lib/supabase';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 // Define user roles
@@ -37,35 +37,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Initialize user from Supabase session - Completely rewritten for reliability
+  // Initialize user from Supabase session using standard patterns
   useEffect(() => {
     console.log('Auth provider mounted - setting up authentication');
-    
-    // Handle manual profile updates from the SessionManager's direct checks
-    const handleManualProfileUpdate = (event: CustomEvent) => {
-      const profileData = event.detail;
-      console.log('Received manual profile update:', profileData);
-      
-      if (profileData && profileData.role === 'superadmin') {
-        console.log('Setting superadmin override from manual update');
-        
-        // Create a complete user object from the profile data
-        const manualUser: User = {
-          id: profileData.id,
-          email: profileData.email || '',
-          name: profileData.profile?.name || profileData.email?.split('@')[0] || 'Admin',
-          role: 'superadmin',
-          organization: profileData.profile?.organization
-        };
-        
-        // Set user directly in auth context
-        setUser(manualUser);
-        setLoading(false);
-      }
-    };
-    
-    // Add listener for manual profile updates
-    window.addEventListener('auth:manualProfileUpdate', handleManualProfileUpdate as EventListener);
     
     // Function to check localStorage for auth token
     const checkStoredAuth = () => {
@@ -89,30 +63,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
     
-    // Check for stored auth
-    const hasStoredAuth = checkStoredAuth();
-    
-    // If we have stored auth, manually try to refresh the session
-    if (hasStoredAuth) {
-      // Create variable for cleanup
-      const refreshAborted = { aborted: false };
-      
-      // Non-async call to refresh the session
-      supabase.auth.refreshSession().then(({ data, error }) => {
-        if (refreshAborted.aborted) return;
-        
-        if (!error && data.session) {
-          console.log('Successfully refreshed session on mount');
-        } else if (error) {
-          console.error('Failed to refresh session on mount:', error);
-        }
-      }).catch(err => {
-        if (!refreshAborted.aborted) {
-          console.error('Unexpected error refreshing session:', err);
-        }
-      });
-    }
-    
     // Function to fetch user profile data 
     const fetchUserProfile = async (userId: string): Promise<any> => {
       try {
@@ -134,22 +84,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
     
-    // Process authenticated user data
+    // Process authenticated user data with JWT role check
     const processAuthenticatedUser = async (userId: string, email: string) => {
       console.log('Processing authenticated user:', email);
       
-      // For all users, fetch their profile from database
+      // First try to get role from JWT claims
+      const roleFromJWT = await getUserRoleFromSession();
+      if (roleFromJWT) {
+        console.log('Found role in JWT claims:', roleFromJWT);
+      }
+      
+      // Always fetch profile for complete user data
       const profile = await fetchUserProfile(userId);
       
       if (profile) {
         console.log('Found user profile:', profile);
         
-        // Determine user role from profile
+        // Determine user role - prioritize JWT if available
         let userRole: UserRole = 'client';
-        if (profile.role === 'superadmin') {
+        
+        if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
           console.log('User is a superadmin!');
           userRole = 'superadmin';
-        } else if (profile.role === 'admin') {
+        } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
           console.log('User is an admin!');
           userRole = 'admin';
         }
@@ -171,7 +128,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           id: userId,
           email: email || '',
           name: email?.split('@')[0] || 'User',
-          role: 'client',
+          role: roleFromJWT as UserRole || 'client',
           organization: null
         });
       }
@@ -183,7 +140,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const checkForActiveSession = async () => {
       try {
         console.log('Checking for active Supabase session...');
-        setLoading(true);
         
         // Get current session from Supabase
         const { data, error } = await supabase.auth.getSession();
@@ -200,49 +156,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           console.log('Found active session for:', data.session.user.email);
           console.log('User ID:', data.session.user.id);
           
-          // Force fetch the current user's profile
-          try {
-            const { data: profile, error: profileError } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', data.session.user.id)
-              .single();
-            
-            if (profileError) {
-              console.error('Error fetching profile after session check:', profileError);
-              setUser(null);
-              setLoading(false);
-              return;
-            }
-            
-            if (profile) {
-              console.log('Found user profile directly:', profile);
-              
-              // Determine user role from profile
-              let userRole: UserRole = 'client';
-              if (profile.role === 'superadmin') {
-                console.log('User is a superadmin!');
-                userRole = 'superadmin';
-              } else if (profile.role === 'admin') {
-                console.log('User is an admin!');
-                userRole = 'admin';
-              }
-              
-              setUser({
-                id: data.session.user.id,
-                email: data.session.user.email || '',
-                name: profile.name || '',
-                role: userRole,
-                organization: profile.organization
-              });
-              setLoading(false);
-              return;
-            }
-          } catch (profileErr) {
-            console.error('Unexpected error fetching profile:', profileErr);
-          }
+          // Check for role in JWT claims
+          console.log('JWT app_metadata:', data.session.user.app_metadata);
           
-          // If direct profile fetch failed, try the standard process
           await processAuthenticatedUser(
             data.session.user.id, 
             data.session.user.email || ''
@@ -253,17 +169,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(null);
           setLoading(false);
         }
-        
-        // Always ensure loading is set to false
-        setTimeout(() => {
-          setLoading(prevLoading => {
-            if (prevLoading) {
-              console.log('checkForActiveSession: Safety timeout - resetting loading state');
-              return false;
-            }
-            return prevLoading;
-          });
-        }, 3000);
       } catch (error) {
         console.error('Error checking session:', error);
         setUser(null);
@@ -271,7 +176,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
     
-    // Set up auth state change listener FIRST (this is important)
+    // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event);
@@ -289,7 +194,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setLoading(false);
         } else if (event === 'TOKEN_REFRESHED') {
           console.log('Token refreshed');
-          // No need to update state, just log it
+          if (session) {
+            // Re-process user on token refresh to get updated claims
+            await processAuthenticatedUser(
+              session.user.id,
+              session.user.email || ''
+            );
+          }
         }
       }
     );
@@ -298,35 +209,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const safetyTimer = setTimeout(() => {
       if (loading) {
         console.warn('Auth loading state was stuck for 5 seconds, forcing it to false');
-        // Use a functional update to prevent race conditions
-        setLoading(prevLoading => {
-          if (prevLoading) {
-            console.log('Safety timer: Resetting loading state');
-            return false;
-          }
-          return prevLoading;
-        });
+        setLoading(false);
       }
     }, 5000);
-    
-    // Listen for force reset events from other components
-    const handleForceReset = (event: Event) => {
-      // Cast to CustomEvent to access detail property
-      const customEvent = event as CustomEvent;
-      console.log('Received force reset event, resetting auth loading state', 
-                 customEvent.detail ? `from ${customEvent.detail.source}` : '');
-      
-      // Use functional update to prevent race conditions
-      setLoading(prevLoading => {
-        if (prevLoading) {
-          console.log('Force reset: Changing loading state from true to false');
-          return false;
-        }
-        return prevLoading;
-      });
-    };
-    
-    window.addEventListener('auth:forceReset', handleForceReset);
     
     // Check for active session immediately
     checkForActiveSession();
@@ -334,8 +219,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => {
       subscription.unsubscribe();
       clearTimeout(safetyTimer);
-      window.removeEventListener('auth:forceReset', handleForceReset);
-      window.removeEventListener('auth:manualProfileUpdate', handleManualProfileUpdate as EventListener);
     };
   }, []);
 
@@ -357,7 +240,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (error) {
         console.error('Supabase auth error:', error);
         setError(error.message);
-        setLoading(false); // Important: reset loading state on error
+        setLoading(false);
         throw error;
       }
       
@@ -405,7 +288,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           
           if (insertError) {
             console.error('Failed to create user profile:', insertError);
-            // Continue anyway with a minimal user
+            // Create minimal user
             const minimalUser = {
               id: data.user.id,
               email: data.user.email || '',
@@ -414,7 +297,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             };
             
             setUser(minimalUser);
-            setLoading(false); // Set loading to false before redirect
+            setLoading(false);
             navigate('/client');
             return;
           }
@@ -429,59 +312,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           };
           
           setUser(userWithNewProfile);
-          
-          // Redirect to client dashboard
-          setLoading(false); // Set loading to false before redirect
+          setLoading(false);
           navigate('/client');
           return;
-        }
-        
-        // For other profile errors, log detailed error and try to recover
-        console.error('Profile fetch error details:', {
-          code: profileError.code, 
-          message: profileError.message,
-          details: profileError.details,
-          hint: profileError.hint
-        });
-        
-        // Try a more direct approach with a raw query
-        try {
-          console.log('Attempting raw profile lookup for:', data.user.id);
-          const { data: rawProfile, error: rawError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', data.user.id);
-            
-          console.log('Raw profile lookup result:', rawProfile, rawError);
-          
-          if (rawProfile && Array.isArray(rawProfile) && rawProfile.length > 0 && !rawError) {
-            // We got a profile via direct query, use it
-            const firstProfile = rawProfile[0];
-            console.log('Using first profile from direct query:', firstProfile);
-            
-            const userWithRawProfile = {
-              id: data.user.id,
-              email: data.user.email || '',
-              name: firstProfile.name || email.split('@')[0],
-              role: (firstProfile.role as UserRole) || 'client',
-              organization: firstProfile.organization
-            };
-            
-            setUser(userWithRawProfile);
-            setLoading(false);
-            
-            // Redirect based on role
-            if (userWithRawProfile.role === 'superadmin') {
-              navigate('/superadmin');
-            } else if (userWithRawProfile.role === 'admin') {
-              navigate('/admin');
-            } else {
-              navigate('/client');
-            }
-            return;
-          }
-        } catch (rpcError) {
-          console.error('RPC lookup failed:', rpcError);
         }
         
         // Last resort: Continue with minimal user info
@@ -494,7 +327,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         
         setUser(minimalUser);
-        setLoading(false); // Set loading to false before redirect
+        setLoading(false);
         navigate('/client');
         return;
       }
@@ -502,12 +335,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Profile exists, set up user with role
       console.log('User profile found:', profile);
       
-      // Determine user role
+      // Determine user role by checking JWT claims first, then profile
       let userRole: UserRole = 'client';
-      if (profile.role === 'superadmin') {
+      
+      // First check JWT claims
+      const roleFromJWT = data.user.app_metadata?.role as UserRole;
+      
+      if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
         console.log('User is a superadmin!');
         userRole = 'superadmin';
-      } else if (profile.role === 'admin') {
+      } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
         userRole = 'admin';
       }
       
@@ -540,7 +377,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error('Login failed:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during login');
       setUser(null);
-      setLoading(false); // Ensure loading is set to false on error
+      setLoading(false);
     }
   };
 
@@ -568,7 +405,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Force reload to login page even if there's an error
       window.location.href = '/login';
     }
-    // Don't use finally with setLoading here since we're reloading the page
   };
 
   // Signup function
@@ -576,92 +412,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(true);
     setError(null);
     
-    // Check if we're on an admin page (creating a user for someone else)
-    // or a signup page (creating a user for oneself)
     const isAdminCreatingUser = window.location.pathname.includes('/admin') || 
                               window.location.pathname.includes('/superadmin');
     
-    console.log('Signup called from:', window.location.pathname, 'isAdminCreatingUser:', isAdminCreatingUser);
-    
     try {
-      // Store current user if admin is creating another user
       let currentUser = null;
       if (isAdminCreatingUser) {
         currentUser = user;
-        console.log('Admin is creating a user, preserving current user session');
       }
       
-      // Create user in Supabase - use admin API if available
-      let userData;
-      let userError;
-      
-      if (isAdminCreatingUser && window.location.pathname.includes('/superadmin')) {
-        // Create user without signing in as that user
-        console.log('Creating user with admin.createUser');
-        try {
-          // Use a direct API call to create user without signing in
-          const sessionData = await supabase.auth.getSession();
-          
-          // Check if we have a valid session with access token
-          if (!sessionData.data.session?.access_token) {
-            throw new Error('No valid session found to perform admin operation');
+      // Create user in Supabase
+      const { data: userData, error: userError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            role,
+            organization
           }
-          
-          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/admin/users`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-              'Authorization': `Bearer ${sessionData.data.session.access_token}`
-            },
-            body: JSON.stringify({
-              email,
-              password,
-              email_confirm: true,
-              user_metadata: { name, role, organization }
-            })
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create user: ${response.status} ${response.statusText} - ${errorText}`);
-          }
-          
-          const createdUser = await response.json();
-          userData = { user: createdUser };
-        } catch (adminError) {
-          console.error('Admin user creation failed, falling back to standard signup:', adminError);
-          // Fall back to standard signup
-          const result = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: {
-                name,
-                role,
-                organization
-              }
-            }
-          });
-          userData = result.data;
-          userError = result.error;
         }
-      } else {
-        // Standard signup
-        const result = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              name,
-              role,
-              organization
-            }
-          }
-        });
-        userData = result.data;
-        userError = result.error;
-      }
+      });
       
       if (userError) {
         throw userError;
@@ -669,7 +440,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       if (userData.user) {
         // Create profile record in profiles table
-        const { data: profileData, error: profileError } = await supabase
+        const { error: profileError } = await supabase
           .from('profiles')
           .insert([
             {
@@ -681,25 +452,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           ]);
           
-        if (profileError) {
-          console.error('Error creating user profile:', profileError);
-          
-          // Check if this is just a duplicate profile error
-          if (profileError.code === '23505') { // unique_violation
-            console.log('Profile already exists');
-          } else {
-            throw profileError;
-          }
+        if (profileError && profileError.code !== '23505') { // Ignore unique_violation
+          throw profileError;
         }
         
         // If admin is creating a user, restore the admin's session
         if (isAdminCreatingUser && currentUser) {
-          console.log('Restoring admin user session');
           setUser(currentUser);
+          setLoading(false);
           return { success: true, userId: userData.user.id };
         }
         
-        // Otherwise, this is self-signup, set the new user
+        // Otherwise, this is self-signup
         if (!isAdminCreatingUser) {
           const newUser: User = {
             id: userData.user.id,
@@ -710,6 +474,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           };
           
           setUser(newUser);
+          setLoading(false);
           
           // Redirect based on role for self-signup
           if (role === 'admin') {
@@ -719,14 +484,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         }
         
+        setLoading(false);
         return { success: true, userId: userData.user.id };
       }
     } catch (err) {
       console.error('Signup error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during signup');
-      return { success: false, error: err };
-    } finally {
       setLoading(false);
+      return { success: false, error: err };
     }
   };
 

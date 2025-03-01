@@ -1,93 +1,123 @@
-# Authentication System Maintenance
+# Authentication Fix Documentation
 
-This document outlines key aspects of the authentication system and how to maintain it.
+## Problem
+The application is experiencing authentication issues where:
+1. User loses superadmin status after page refresh 
+2. JWT tokens don't contain role information from the profile
+3. Special handling was added for specific email addresses as a workaround
 
-## Session Management
+## Root Cause
+The JWT tokens issued by Supabase don't automatically include custom claims from profile tables. This causes authentication state to be lost on refresh when using role-based authorization that relies on database values.
 
-The authentication system uses Supabase for session management with these key files:
+## Solution: Use Supabase JWT Custom Claims
 
-1. `src/lib/supabase.ts` - Creates the Supabase client and manages session persistence
-2. `src/contexts/AuthContext.tsx` - Manages user authentication state and profile data
-3. `src/components/SuperAdminRoute.tsx` - Protects superadmin routes
+This is how to properly implement role-based authentication with Supabase:
 
-## Storage Key
-
-The storage key for authentication tokens follows this pattern:
-```
-sb-{project-id}-auth-token
-```
-
-Where `project-id` is extracted from your Supabase URL.
-
-## Multi-Level Authentication System
-
-The app uses a robust multi-level authentication strategy:
-
-1. Primary authentication via Supabase auth system:
-   - Handles login/logout
-   - Manages user session in localStorage
-   - Refreshes tokens automatically
-
-2. Enhanced session persistence with multiple storage methods:
-   - LocalStorage (default Supabase storage)
-   - SessionStorage backup for secondary retrieval
-   - IndexedDB for more persistent offline storage
-   - Manual token parsing and restoration
-
-3. Fallback direct database permission check:
-   - Added for SuperAdmin routes specifically
-   - Directly queries the database to verify permissions
-   - Bypasses normal auth flow if it fails
-
-## Common Issues and Solutions
-
-### 1. Session Lost on Refresh
-
-The core issue was that the Supabase JWT token contained role: "authenticated" while the user profile in the database had role: "superadmin". This mismatch caused authentication issues on page refresh because:
-
-1. When logging in initially, we fetch the profile and use the role from there
-2. After a refresh, the JWT token is restored first with just "authenticated" role
-3. Then profile fetch happens later, creating a race condition
-
-**Proper Fix**: 
-We created a database trigger that automatically syncs the role from profiles table to the JWT claims. This ensures that when you log in or refresh, your role is always consistent.
-
-To apply the fix:
-1. Run the SQL script in `/supabase/sync_role_to_claims.sql` on your Supabase database
-2. This creates a trigger that keeps JWT claims in sync with profile roles
-3. It also updates all existing users' JWT claims to match their profile roles
-
-After this fix, JWT tokens will include the correct role (e.g., "superadmin"), making the refresh issue disappear permanently.
-
-### 2. Blob URL Issues with Images
-
-Blob URLs are temporary and don't persist across page loads:
-- Use data URLs instead of blob URLs (current implementation)
-- Store images in sessionStorage for persistence
-
-### 3. Database Table Issues
-
-If you see 404/406 errors about global_settings:
-- Run the SQL script in fixed_supabase_schema.sql to create table
-- Check RLS policies to ensure proper access
-
-## Required Tables
-
-The app requires these database tables:
-1. `auth.users` - Standard Supabase auth table
-2. `profiles` - Stores user profiles with role field
-3. `global_settings` - Stores app settings like branding
-
-## Making Someone a Superadmin
-
-To make a user a superadmin, run this SQL:
-
+### 1. Create a Database Function with JWT Generation
 ```sql
-UPDATE profiles
-SET role = 'superadmin'
-WHERE id = (
-  SELECT id 
-  FROM auth.users 
-  WHERE email = 'user@example.com'
-);
+-- Create a function that will be called on login
+CREATE OR REPLACE FUNCTION public.handle_new_user() 
+RETURNS trigger AS $$
+BEGIN
+  -- Get the role from profiles table
+  DECLARE
+    user_role text;
+  BEGIN
+    SELECT role INTO user_role FROM public.profiles WHERE id = NEW.id;
+    
+    -- Set the role in user metadata
+    IF user_role IS NOT NULL THEN
+      -- Update the user's app_metadata to include role
+      UPDATE auth.users
+      SET raw_app_metadata = 
+        CASE
+          WHEN raw_app_metadata IS NULL THEN 
+            jsonb_build_object('role', user_role)
+          ELSE
+            raw_app_metadata || jsonb_build_object('role', user_role)
+        END
+      WHERE id = NEW.id;
+    END IF;
+  END;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 ```
+
+### 2. Create a Trigger to Update JWT Claims on Profile Changes
+```sql
+-- Create a trigger to run the function whenever a profile is updated
+CREATE OR REPLACE TRIGGER on_profile_update
+  AFTER UPDATE ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+
+-- Create a trigger to run the function whenever a new profile is created
+CREATE OR REPLACE TRIGGER on_profile_create
+  AFTER INSERT ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+```
+
+### 3. Manually Sync Existing Users
+```sql
+-- Run this once to update existing users
+DO $$
+DECLARE
+  profile_record RECORD;
+BEGIN
+  FOR profile_record IN SELECT * FROM public.profiles
+  LOOP
+    -- Update the user's app_metadata to include role
+    UPDATE auth.users
+    SET raw_app_metadata = 
+      CASE
+        WHEN raw_app_metadata IS NULL THEN 
+          jsonb_build_object('role', profile_record.role)
+        ELSE
+          raw_app_metadata || jsonb_build_object('role', profile_record.role)
+      END
+    WHERE id = profile_record.id;
+  END LOOP;
+END $$;
+```
+
+### 4. Update Frontend Code to Use JWT Claims
+
+Update your authorization logic to check for role in multiple places:
+
+```typescript
+// In SuperAdminRoute.tsx
+const hasRole = (role: string): boolean => {
+  // Check JWT claims first (reliable after implementing the solution)
+  const session = supabase.auth.getSession();
+  if (session?.user?.app_metadata?.role === role) {
+    return true;
+  }
+  
+  // Fallback to context user if available
+  if (user?.role === role) {
+    return true;
+  }
+  
+  return false;
+}
+```
+
+### 5. Remove All Special Email Handling
+
+Once implemented, remove all special email handling code, including:
+- Special checks for 'armandmorin@gmail.com'
+- The auth-recovery.js script 
+- All sessionStorage and special flags
+
+## Testing the Solution
+1. Run the SQL scripts to set up JWT claim handling
+2. Log in as a superadmin user
+3. Refresh the page
+4. Verify that you still have superadmin access
+5. Check the JWT token contents in developer tools to confirm role is included
+
+## Conclusion
+This solution addresses the root cause by making the role information part of the JWT token itself, ensuring that role information persists across page refreshes without needing any special handling.
