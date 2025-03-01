@@ -19,14 +19,35 @@ sb-{project-id}-auth-token
 
 Where `project-id` is extracted from your Supabase URL.
 
+## Multi-Level Authentication System
+
+The app uses a robust multi-level authentication strategy:
+
+1. Primary authentication via Supabase auth system:
+   - Handles login/logout
+   - Manages user session in localStorage
+   - Refreshes tokens automatically
+
+2. Enhanced session persistence with multiple storage methods:
+   - LocalStorage (default Supabase storage)
+   - SessionStorage backup for secondary retrieval
+   - IndexedDB for more persistent offline storage
+   - Manual token parsing and restoration
+
+3. Fallback direct database permission check:
+   - Added for SuperAdmin routes specifically
+   - Directly queries the database to verify permissions
+   - Bypasses normal auth flow if it fails
+
 ## Common Issues and Solutions
 
 ### 1. Session Lost on Refresh
 
 If sessions are lost on page refresh:
+- The app now has multiple fallback strategies
 - Check browser localStorage for the correct auth token
 - Verify Supabase client configuration in supabase.ts
-- Check AuthContext.tsx for session handling issues
+- The SuperAdminRoute will attempt a direct database check as a last resort
 
 ### 2. Blob URL Issues with Images
 

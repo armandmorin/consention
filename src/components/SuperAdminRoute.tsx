@@ -1,23 +1,56 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { SessionManager } from '../lib/supabase';
 
 interface SuperAdminRouteProps {
   children: ReactNode;
 }
 
+// Create a completely new implementation for SuperAdminRoute
 const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const [directSuperAdminCheck, setDirectSuperAdminCheck] = useState<boolean | null>(null);
+  const [directCheckRunning, setDirectCheckRunning] = useState(false);
 
-  // Log path and check localStorage (no cleanup needed)
-  console.log('SuperAdminRoute mounted at path:', location.pathname);
+  // Log component render
+  console.log('SuperAdminRoute rendering with user:', user?.role, 'loading:', loading);
   
-  // Simplify - remove localStorage check that's not needed here
-  
-  // Simplified - no useEffect hooks that could cause React Error #310
+  // Perform a direct check for superadmin permissions as a backup strategy
+  useEffect(() => {
+    let mounted = true;
+    
+    // Only run this check if auth context claims we have no user or wrong role
+    if (!loading && (!user || user.role !== 'superadmin')) {
+      console.log('Running direct superadmin check as a backup strategy');
+      
+      if (!directCheckRunning) {
+        setDirectCheckRunning(true);
+        
+        // Use our new force check method that directly queries the database
+        SessionManager.forceSuperAdminCheck().then(isSuperAdmin => {
+          if (mounted) {
+            console.log('Direct superadmin check result:', isSuperAdmin);
+            setDirectSuperAdminCheck(isSuperAdmin);
+            setDirectCheckRunning(false);
+          }
+        }).catch(err => {
+          console.error('Error in direct superadmin check:', err);
+          if (mounted) {
+            setDirectSuperAdminCheck(false);
+            setDirectCheckRunning(false);
+          }
+        });
+      }
+    }
+    
+    return () => {
+      mounted = false;
+    };
+  }, [user, loading, directCheckRunning]);
 
-  // Enhanced loading state with a delay to prevent flash redirects
+  // CASE 1: Still loading from Auth context - show loading UI
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -26,31 +59,32 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
       </div>
     );
   }
-
-  // Remove this useEffect entirely - session restoration is now handled at the App level
-  // This useEffect was causing React Error #310 by creating a race condition
-  // The SessionManager is now imported directly in App.tsx and initialized once
-
-  // Simple redirect check - no useEffect to avoid React Error #310
-  // Let's use the navigate for redirection instead of useEffect
-  if (!loading) {
-    if (user === null) {
-      console.log('No user found in SuperAdminRoute, redirecting to login');
-      // Navigate to login
-      return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-    }
-    
-    if (user && user.role !== 'superadmin') {
-      console.log('User does not have superadmin privileges, redirecting to home');
-      // Navigate to home
-      return <Navigate to="/" replace />;
-    }
+  
+  // CASE 2: Direct check is running - show secondary loading
+  if (directCheckRunning) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <div className="animate-spin h-10 w-10 border-4 border-green-500 rounded-full border-t-transparent mb-4"></div>
+        <p className="text-lg text-gray-700">Verifying admin permissions...</p>
+      </div>
+    );
   }
   
-  // We've already handled the redirect cases above, this code is redundant
-  // and could be causing the React error
-
-  return <>{children}</>;
+  // CASE 3: Auth context says user is superadmin - allow access
+  if (user && user.role === 'superadmin') {
+    console.log('Auth context confirmed superadmin role, granting access');
+    return <>{children}</>;
+  }
+  
+  // CASE 4: Direct check says user is superadmin - allow access
+  if (directSuperAdminCheck === true) {
+    console.log('Direct check confirmed superadmin role, granting access');
+    return <>{children}</>;
+  }
+  
+  // CASE 5: Both checks failed - redirect
+  console.log('All checks failed, redirecting to login');
+  return <Navigate to="/login" state={{ from: location.pathname }} replace />;
 };
 
 export default SuperAdminRoute;

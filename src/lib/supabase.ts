@@ -69,75 +69,287 @@ export const hasValidSession = async (): Promise<boolean> => {
   }
 }
 
-// Create a persistent session manager
+// Create a completely new persistent session manager that uses multiple strategies
 export const SessionManager = {
   // Initialize when the app starts
   init: async () => {
     try {
-      // First check storage 
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        console.log('SessionManager: Found stored session data')
-        
-        // Force refresh the session token
-        const { data, error } = await supabase.auth.refreshSession()
-        if (error) {
-          console.error('SessionManager: Failed to refresh token:', error)
-          return false
+      // First try to get cookies as they are more reliable
+      document.cookie.split(';').some(cookie => {
+        if (cookie.trim().startsWith('sb-auth=')) {
+          console.log('Found supabase cookie - we should have a session');
         }
+      });
+      
+      // Create a direct flag in window to track status 
+      window.__supabaseAuthInitialized = true;
+      window.__supabaseAuthChecking = true;
+      
+      // Double-strategy approach - try refreshing session first
+      console.log('SessionManager: Initializing with refresh strategy...');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (!refreshError && refreshData.session) {
+        console.log('SessionManager: Session refreshed successfully');
         
-        if (data.session) {
-          console.log('SessionManager: Session refreshed successfully')
+        // Store in multiple places for maximum persistence
+        try {
+          // Store in sessionStorage as a backup
+          sessionStorage.setItem('supabase_access_token', refreshData.session.access_token);
           
-          // Store access token in sessionStorage as an additional backup
-          sessionStorage.setItem('supabase_access_token', data.session.access_token)
-          return true
+          // Store in indexedDB as another backup
+          if (window.indexedDB) {
+            const request = window.indexedDB.open('supabaseAuthBackup', 1);
+            request.onupgradeneeded = (event) => {
+              const db = event.target.result;
+              if (!db.objectStoreNames.contains('tokens')) {
+                db.createObjectStore('tokens', { keyPath: 'id' });
+              }
+            };
+            
+            request.onsuccess = (event) => {
+              const db = event.target.result;
+              const transaction = db.transaction(['tokens'], 'readwrite');
+              const store = transaction.objectStore('tokens');
+              
+              store.put({
+                id: 'current',
+                access_token: refreshData.session.access_token,
+                refresh_token: refreshData.session.refresh_token,
+                timestamp: Date.now()
+              });
+            };
+          }
+        } catch (storageErr) {
+          console.error('Error with backup storage:', storageErr);
+        }
+        
+        // Set status flags
+        window.__supabaseAuthChecking = false;
+        window.__supabaseAuthSuccess = true;
+        
+        return true;
+      }
+      
+      // If refresh failed, try direct session check
+      console.log('SessionManager: Refresh failed, trying getSession...');
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      
+      if (!sessionError && sessionData.session) {
+        console.log('SessionManager: Found active session');
+        
+        // Backup the session tokens
+        sessionStorage.setItem('supabase_access_token', sessionData.session.access_token);
+        
+        // Set status flags
+        window.__supabaseAuthChecking = false;
+        window.__supabaseAuthSuccess = true;
+        
+        return true;
+      }
+      
+      // Fallback mode - check localStorage manually
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (parsed.currentSession?.access_token) {
+            console.log('SessionManager: Found token in localStorage, trying to set manually');
+            
+            // Try to manually set the session as last resort
+            const { error: setError } = await supabase.auth.setSession({
+              access_token: parsed.currentSession.access_token,
+              refresh_token: parsed.currentSession.refresh_token || ''
+            });
+            
+            if (!setError) {
+              console.log('SessionManager: Manual session set successful!');
+              window.__supabaseAuthChecking = false;
+              window.__supabaseAuthSuccess = true;
+              return true;
+            }
+          }
+        } catch (parseErr) {
+          console.error('Error parsing stored session:', parseErr);
         }
       }
       
-      // Check for existing session
-      const { data } = await supabase.auth.getSession()
-      if (data.session) {
-        console.log('SessionManager: Active session exists')
-        sessionStorage.setItem('supabase_access_token', data.session.access_token)
-        return true
-      }
-      
-      return false
+      // All strategies failed
+      window.__supabaseAuthChecking = false;
+      window.__supabaseAuthSuccess = false;
+      return false;
     } catch (err) {
-      console.error('SessionManager: Error initializing:', err)
-      return false
+      console.error('SessionManager: Critical error initializing:', err);
+      window.__supabaseAuthChecking = false;
+      window.__supabaseAuthSuccess = false;
+      return false;
     }
   },
   
-  // Restore session from any available storage
+  // Enhanced restore session function using multiple fallbacks
   restore: async () => {
     try {
-      // Try to get session from Supabase
-      const { data } = await supabase.auth.getSession()
-      if (data.session) {
-        console.log('SessionManager: Session restored from Supabase')
-        return true
+      // Try each strategy in sequence for maximum reliability
+      
+      // Strategy 1: Default getSession from Supabase
+      console.log('SessionManager restore: trying getSession...');
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      
+      if (!sessionError && sessionData.session) {
+        console.log('SessionManager: Session restored from Supabase');
+        return true;
       }
       
-      // Try to restore from backup in sessionStorage
-      const backupToken = sessionStorage.getItem('supabase_access_token')
+      // Strategy 2: Try refresh
+      console.log('SessionManager restore: trying refreshSession...');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (!refreshError && refreshData.session) {
+        console.log('SessionManager: Session refreshed successfully');
+        return true;
+      }
+      
+      // Strategy 3: Try sessionStorage backup
+      const backupToken = sessionStorage.getItem('supabase_access_token');
       if (backupToken) {
-        console.log('SessionManager: Attempting to restore from backup token')
-        const { error } = await supabase.auth.setSession({ access_token: backupToken, refresh_token: '' })
+        console.log('SessionManager: Trying sessionStorage token...');
+        const { error: setError } = await supabase.auth.setSession({ 
+          access_token: backupToken, 
+          refresh_token: '' 
+        });
         
-        if (!error) {
-          console.log('SessionManager: Session restored from backup token')
-          return true
-        } else {
-          console.error('SessionManager: Failed to restore from backup token:', error)
+        if (!setError) {
+          console.log('SessionManager: Session restored from sessionStorage');
+          return true;
         }
       }
       
-      return false
+      // Strategy 4: Try IndexedDB backup
+      if (window.indexedDB) {
+        return new Promise((resolve) => {
+          try {
+            console.log('SessionManager: Trying IndexedDB backup...');
+            const request = window.indexedDB.open('supabaseAuthBackup', 1);
+            
+            request.onerror = () => {
+              console.error('Error opening IndexedDB');
+              resolve(false);
+            };
+            
+            request.onsuccess = async (event) => {
+              try {
+                const db = event.target.result;
+                const transaction = db.transaction(['tokens'], 'readonly');
+                const store = transaction.objectStore('tokens');
+                const getRequest = store.get('current');
+                
+                getRequest.onsuccess = async () => {
+                  if (getRequest.result && getRequest.result.access_token) {
+                    const { error } = await supabase.auth.setSession({
+                      access_token: getRequest.result.access_token,
+                      refresh_token: getRequest.result.refresh_token || ''
+                    });
+                    
+                    if (!error) {
+                      console.log('SessionManager: Session restored from IndexedDB');
+                      resolve(true);
+                    } else {
+                      console.error('Failed to set session from IndexedDB:', error);
+                      resolve(false);
+                    }
+                  } else {
+                    console.log('No valid token found in IndexedDB');
+                    resolve(false);
+                  }
+                };
+                
+                getRequest.onerror = () => {
+                  console.error('Error getting token from IndexedDB');
+                  resolve(false);
+                };
+              } catch (dbErr) {
+                console.error('Error in IndexedDB transaction:', dbErr);
+                resolve(false);
+              }
+            };
+          } catch (idbErr) {
+            console.error('IndexedDB overall error:', idbErr);
+            resolve(false);
+          }
+        });
+      }
+      
+      // Strategy 5: Final manual localStorage check
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.currentSession?.access_token) {
+            console.log('SessionManager: Last attempt with localStorage token');
+            
+            const { error } = await supabase.auth.setSession({
+              access_token: parsed.currentSession.access_token,
+              refresh_token: parsed.currentSession.refresh_token || ''
+            });
+            
+            if (!error) {
+              console.log('SessionManager: Session restored from localStorage parse');
+              return true;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error in final localStorage attempt:', e);
+      }
+      
+      // All strategies failed
+      console.log('SessionManager: All session restoration strategies failed');
+      return false;
     } catch (err) {
-      console.error('SessionManager: Error restoring session:', err)
-      return false
+      console.error('SessionManager: Critical error in restore:', err);
+      return false;
+    }
+  },
+  
+  // Force role check - a new strategy to verify superadmin access
+  forceSuperAdminCheck: async () => {
+    try {
+      console.log('Performing direct superadmin role check...');
+      
+      // First try to force refresh the session
+      await supabase.auth.refreshSession();
+      
+      // Get the current user - this should reflect the refreshed session
+      const { data: userData } = await supabase.auth.getUser();
+      
+      if (!userData?.user) {
+        console.error('No user found in forceSuperAdminCheck');
+        return false;
+      }
+      
+      // Get the user's profile to check role
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userData.user.id)
+        .single();
+      
+      if (profileError) {
+        console.error('Error fetching profile in superadmin check:', profileError);
+        return false;
+      }
+      
+      // Verify superadmin role
+      if (profile && profile.role === 'superadmin') {
+        console.log('Direct check confirms user is superadmin');
+        return true;
+      } else {
+        console.log('User is not a superadmin:', profile?.role);
+        return false;
+      }
+    } catch (err) {
+      console.error('Error in superadmin force check:', err);
+      return false;
     }
   }
 }
