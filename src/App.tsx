@@ -12,9 +12,6 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import SuperAdminRoute from './components/SuperAdminRoute';
 
-// Import supabase client directly
-import { supabase } from './lib/supabase';
-
 // Public pages
 import LandingPage from './pages/public/LandingPage';
 
@@ -35,8 +32,6 @@ import GlobalAnalytics from './pages/superadmin/GlobalAnalytics';
 // Client pages
 import ClientDashboard from './pages/client/Dashboard';
 import ClientAnalytics from './pages/client/Analytics';
-
-// Removed middleware entirely to simplify rendering flow
 
 function App() {
   // Simple app initialization without token refresh
@@ -81,7 +76,6 @@ function App() {
   
   return (
     <Router>
-      {/* Remove the key prop that's causing unmounting issues */}
       <AuthProvider>
         <Routes>
           {/* Public routes */}

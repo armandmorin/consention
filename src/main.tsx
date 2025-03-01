@@ -1,33 +1,24 @@
 // Ensure React is explicitly imported and available globally
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { Auth0Provider } from '@auth0/auth0-react'
 import './index.css'
 import App from './App'
+import { auth0Config } from './lib/auth0'
 
-// Basic session persistence check on page load
-const checkPersistedSession = () => {
-  try {
-    const PROJECT_ID = 'fgnvobekfychilwomxij';
-    const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
-    
-    const storedData = localStorage.getItem(STORAGE_KEY);
-    if (storedData) {
-      const data = JSON.parse(storedData);
-      console.log('Found persisted session for:', data?.user?.email || 'unknown user');
-    } else {
-      console.log('No persisted session found in localStorage');
-    }
-  } catch (e) {
-    console.error('Error checking persisted session:', e);
-  }
-};
+console.log('App mounting with Auth0 configuration')
 
-// Check session state on load before React even starts
-checkPersistedSession();
-
-// Render the app
+// Render the app with Auth0Provider
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <Auth0Provider
+      domain={auth0Config.domain}
+      clientId={auth0Config.clientId}
+      authorizationParams={auth0Config.authorizationParams}
+      cacheLocation={auth0Config.cacheLocation as any}
+      onRedirectCallback={auth0Config.onRedirectCallback}
+    >
+      <App />
+    </Auth0Provider>
   </React.StrictMode>
 )
