@@ -17,52 +17,92 @@ const Login: React.FC = () => {
   const state = location.state as LocationState;
   const message = state?.message;
   
-  // Handle redirections and cleanup on component mount
+  // Enhanced login page with direct Supabase session check
   useEffect(() => {
     let isMounted = true;
     console.log('Login page loaded, checking auth state');
     
-    // Redirect authenticated users
-    const redirectIfLoggedIn = () => {
-      if (user && isMounted) {
-        console.log(`User already logged in as ${user.role}, redirecting...`);
-        // Use a microtask to ensure we don't redirect during render
-        Promise.resolve().then(() => {
-          if (!isMounted) return;
+    // Direct Supabase session check that doesn't rely on context
+    const checkDirectSession = async () => {
+      try {
+        console.log('Login page checking Supabase session directly');
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error checking session on login page:', error);
+          return;
+        }
+        
+        if (data.session) {
+          console.log('Login page found active session for:', data.session.user.email);
           
-          if (user.role === 'superadmin') {
+          // If we have a session but no user in context, navigate based on role
+          const role = data.session.user.app_metadata?.role;
+          
+          if (role === 'superadmin') {
+            console.log('Direct session check: user is superadmin, redirecting');
             navigate('/superadmin');
-          } else if (user.role === 'admin') {
+            return;
+          } else if (role === 'admin') {
+            console.log('Direct session check: user is admin, redirecting');
             navigate('/admin');
-          } else if (user.role === 'client') {
-            navigate('/client');
+            return;
           }
-        });
+          
+          // If we can't determine role from JWT, try the database
+          try {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('role')
+              .eq('id', data.session.user.id)
+              .single();
+              
+            if (profileData?.role === 'superadmin') {
+              navigate('/superadmin');
+              return;
+            } else if (profileData?.role === 'admin') {
+              navigate('/admin');
+              return;
+            } else if (profileData?.role === 'client') {
+              navigate('/client');
+              return;
+            }
+          } catch (err) {
+            console.error('Error getting profile in login page:', err);
+          }
+          
+          // Default case - if we have a session but couldn't determine role
+          navigate('/client');
+        }
+      } catch (err) {
+        console.error('Login page session check error:', err);
       }
     };
     
-    // Add a safety timeout to ensure auth loading is reset
-    const safetyTimer = setTimeout(() => {
-      if (loading && isMounted) {
-        console.warn('Login page: Auth loading state was stuck, forcing reset');
-        const resetEvent = new CustomEvent('auth:forceReset', {
-          bubbles: true,
-          cancelable: true,
-          detail: { source: 'LoginPage', timestamp: Date.now() }
-        });
-        window.dispatchEvent(resetEvent);
+    // Redirect authenticated users based on context
+    const redirectIfLoggedIn = () => {
+      if (user && isMounted) {
+        console.log(`User already logged in as ${user.role}, redirecting...`);
+        
+        if (user.role === 'superadmin') {
+          navigate('/superadmin');
+        } else if (user.role === 'admin') {
+          navigate('/admin');
+        } else if (user.role === 'client') {
+          navigate('/client');
+        }
       }
-    }, 3000);
+    };
     
-    // Check immediately in case we already have user data
+    // Check both methods
+    checkDirectSession();
     redirectIfLoggedIn();
     
     return () => {
       isMounted = false;
-      clearTimeout(safetyTimer);
       console.log('Login page unmounted');
     };
-  }, [user, loading, navigate]);
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
