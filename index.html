@@ -40,39 +40,6 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     
-    <!-- Simple localStorage-based auth persistence system -->
-    <script>
-      // Global helpers for maintaining auth state
-      window.SPA_AUTH = {
-        getUser: function() {
-          try {
-            const userData = localStorage.getItem('user');
-            return userData ? JSON.parse(userData) : null;
-          } catch (e) {
-            console.error('Error getting user from localStorage:', e);
-            return null;
-          }
-        },
-        
-        saveUser: function(user) {
-          try {
-            localStorage.setItem('user', JSON.stringify(user));
-            console.log('User saved to localStorage');
-          } catch (e) {
-            console.error('Error saving user to localStorage:', e);
-          }
-        },
-        
-        removeUser: function() {
-          localStorage.removeItem('user');
-          console.log('User removed from localStorage');
-        },
-        
-        goTo: function(path) {
-          // Skip the router and use direct navigation
-          window.location.href = path;
-        }
-      };
-    </script>
+    <!-- Auth is now handled by Supabase directly -->
   </body>
 </html>

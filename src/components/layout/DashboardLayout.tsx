@@ -27,60 +27,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   const navigate = useNavigate();
   const { logout, user, loading } = useAuth();
   
-  // Enhanced authentication check with direct session verification
+  // Simple authentication check
   useEffect(() => {
-    let isMounted = true;
-    let sessionCheckTimer: NodeJS.Timeout | null = null;
-    
-    // Check directly for a valid session in localStorage or JWT
-    const checkDirectSession = async () => {
-      try {
-        // First check email directly from session
-        const { data, error } = await supabase.auth.getSession();
-        
-        // If we have a valid session with armandmorin@gmail.com, stay on the page
-        if (!error && data.session?.user.email === 'armandmorin@gmail.com') {
-          console.log('DashboardLayout: Found active armandmorin@gmail.com session, staying on page');
-          return true;
-        }
-        
-        // Check JWT claims for role
-        if (!error && data.session?.user.app_metadata?.role === 'superadmin') {
-          console.log('DashboardLayout: Found superadmin role in JWT, staying on page');
-          return true;
-        }
-        
-        // No special case found
-        return false;
-      } catch (err) {
-        console.error('Error checking direct session:', err);
-        return false;
-      }
-    };
-    
-    // Only check auth and redirect if explicitly not logged in (not during initial loading)
+    // Only redirect if we're definitely not logged in
     if (!loading && user === null) {
-      console.log('No user in AuthContext, checking direct session...');
-      
-      // Set a timeout to prevent redirect race conditions
-      sessionCheckTimer = setTimeout(async () => {
-        if (!isMounted) return;
-        
-        // Perform direct session check
-        const hasDirectSession = await checkDirectSession();
-        
-        if (!hasDirectSession && isMounted) {
-          console.log('No valid session found, redirecting to login');
-          navigate('/login');
-        }
-      }, 500); // Short delay to allow other checks to complete
+      navigate('/login');
     }
-    
-    return () => {
-      isMounted = false;
-      if (sessionCheckTimer) clearTimeout(sessionCheckTimer);
-    };
-  }, [user, loading, navigate, location.pathname]);
+  }, [user, loading, navigate]);
   
   // Determine user type from URL
   const isSuperAdmin = location.pathname.includes('/superadmin');
@@ -121,99 +74,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
         { name: 'Analytics', href: '/client/analytics', icon: BarChart2 },
       ];
 
-  // Fail-safe for stuck loading state
-  const [stuckLoading, setStuckLoading] = useState(false);
+  // No loading state detection needed anymore
   
-  // Set up a timer to detect stuck loading state
-  useEffect(() => {
-    let isMounted = true;
-    
-    if (loading) {
-      const stuckTimer = setTimeout(() => {
-        if (isMounted) {
-          console.warn("DashboardLayout loading state appears stuck, forcing a manual refresh option");
-          setStuckLoading(true);
-        }
-      }, 4000); // Reduced from 8 to 4 seconds to detect issues faster
-      
-      return () => {
-        isMounted = false;
-        clearTimeout(stuckTimer);
-      };
-    }
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [loading]);
-  
-  // Force loading state to false if it gets stuck for too long
-  useEffect(() => {
-    let isMounted = true;
-    
-    if (loading) {
-      const forceResetTimer = setTimeout(() => {
-        if (isMounted) {
-          console.warn("DashboardLayout loading state was stuck for too long, forcing it to false");
-          // Use CustomEvent with more detail for debugging
-          const resetEvent = new CustomEvent('auth:forceReset', {
-            bubbles: true,
-            cancelable: true,
-            detail: { source: 'DashboardLayout', timestamp: Date.now() }
-          });
-          window.dispatchEvent(resetEvent);
-        }
-      }, 6000); // Force state reset after 6 seconds
-      
-      return () => {
-        isMounted = false;
-        clearTimeout(forceResetTimer);
-      };
-    }
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [loading]);
-  
-  // Show loading state
+  // Simple loading state
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-100">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold mb-4">Loading...</h2>
-          <p className="text-gray-500">Please wait while we set up your dashboard</p>
-          
-          {stuckLoading && (
-            <div className="mt-6">
-              <p className="text-amber-600 mb-2">Loading seems to be taking longer than usual</p>
-              <div className="flex space-x-2 justify-center">
-                <button 
-                  onClick={() => window.location.reload()}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
-                  Refresh Page
-                </button>
-                <button 
-                  onClick={() => {
-                    // Clear all auth-related localStorage items
-                    const localStorageKeys = Object.keys(localStorage);
-                    localStorageKeys.forEach(key => {
-                      if (key.startsWith('sb-') || key.includes('supabase') || key.includes('consent')) {
-                        localStorage.removeItem(key);
-                      }
-                    });
-                    // Force reload
-                    window.location.href = '/login';
-                  }}
-                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                >
-                  Clear Cache & Login
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
       </div>
     );
   }
