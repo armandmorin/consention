@@ -1,21 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-// Add global type declaration for our temporary override
-declare global {
-  interface Window {
-    __supabaseAuthInitialized?: boolean;
-    __supabaseAuthChecking?: boolean;
-    __supabaseAuthSuccess?: boolean;
-    __temporarySuperAdminOverride?: {
-      id: string;
-      email: string;
-      role: string;
-      name: string;
-      organization?: string;
-    };
-  }
-}
-
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 

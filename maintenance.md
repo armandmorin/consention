@@ -43,11 +43,21 @@ The app uses a robust multi-level authentication strategy:
 
 ### 1. Session Lost on Refresh
 
-If sessions are lost on page refresh:
-- The app now has multiple fallback strategies
-- Check browser localStorage for the correct auth token
-- Verify Supabase client configuration in supabase.ts
-- The SuperAdminRoute will attempt a direct database check as a last resort
+The core issue was that the Supabase JWT token contained role: "authenticated" while the user profile in the database had role: "superadmin". This mismatch caused authentication issues on page refresh because:
+
+1. When logging in initially, we fetch the profile and use the role from there
+2. After a refresh, the JWT token is restored first with just "authenticated" role
+3. Then profile fetch happens later, creating a race condition
+
+**Proper Fix**: 
+We created a database trigger that automatically syncs the role from profiles table to the JWT claims. This ensures that when you log in or refresh, your role is always consistent.
+
+To apply the fix:
+1. Run the SQL script in `/supabase/sync_role_to_claims.sql` on your Supabase database
+2. This creates a trigger that keeps JWT claims in sync with profile roles
+3. It also updates all existing users' JWT claims to match their profile roles
+
+After this fix, JWT tokens will include the correct role (e.g., "superadmin"), making the refresh issue disappear permanently.
 
 ### 2. Blob URL Issues with Images
 
