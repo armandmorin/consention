@@ -12,12 +12,12 @@ BEGIN
     IF user_role IS NOT NULL THEN
       -- Update the user's app_metadata to include role
       UPDATE auth.users
-      SET raw_app_metadata = 
+      SET raw_app_meta_data = 
         CASE
-          WHEN raw_app_metadata IS NULL THEN 
+          WHEN raw_app_meta_data IS NULL THEN 
             jsonb_build_object('role', user_role)
           ELSE
-            raw_app_metadata || jsonb_build_object('role', user_role)
+            raw_app_meta_data || jsonb_build_object('role', user_role)
         END
       WHERE id = NEW.id;
     END IF;
@@ -48,19 +48,19 @@ BEGIN
   LOOP
     -- Update the user's app_metadata to include role
     UPDATE auth.users
-    SET raw_app_metadata = 
+    SET raw_app_meta_data = 
       CASE
-        WHEN raw_app_metadata IS NULL THEN 
+        WHEN raw_app_meta_data IS NULL THEN 
           jsonb_build_object('role', profile_record.role)
         ELSE
-          raw_app_metadata || jsonb_build_object('role', profile_record.role)
+          raw_app_meta_data || jsonb_build_object('role', profile_record.role)
       END
     WHERE id = profile_record.id;
   END LOOP;
 END $$;
 
 -- Check if roles are correctly set in JWT claims
-SELECT au.id, au.email, p.role as profile_role, au.raw_app_metadata->>'role' as jwt_role 
+SELECT au.id, au.email, p.role as profile_role, au.raw_app_meta_data->>'role' as jwt_role 
 FROM auth.users au 
 JOIN public.profiles p ON au.id = p.id;
 

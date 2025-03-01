@@ -1,7 +1,7 @@
 import React, { ReactNode, useState, useCallback, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { SessionManager } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 import { 
   Shield, 
   Menu, 
@@ -31,17 +31,20 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   useEffect(() => {
     let isMounted = true;
     
-    // Special check for armandmorin@gmail.com in superadmin area - multiple sources
-    const isArmandInSuperAdmin = () => {
-      return location.pathname.includes('/superadmin') && (
-        SessionManager.isArmandMorin() || 
-        window.SUPERADMIN_ACCESS_GRANTED === true ||
-        sessionStorage.getItem('force_superadmin_access') === 'true'
-      );
+    // Special check for armandmorin@gmail.com in superadmin area
+    const isArmandInSuperAdmin = async () => {
+      if (!location.pathname.includes('/superadmin')) return false;
+      
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        return !error && data.session?.user.email === 'armandmorin@gmail.com';
+      } catch {
+        return false;
+      }
     };
     
     // Only redirect if explicitly not logged in (not during initial loading)
-    if (!loading && user === null && !isArmandInSuperAdmin()) {
+    if (!loading && user === null) {
       console.log('No user detected in DashboardLayout, redirecting to login');
       // Use a microtask to ensure we don't redirect during render
       Promise.resolve().then(() => {
