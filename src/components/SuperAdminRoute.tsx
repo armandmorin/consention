@@ -14,10 +14,32 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
   const [access, setAccess] = useState<boolean | null>(null);
   const [isArmand, setIsArmand] = useState<boolean>(false);
   
-  // Check session independently from the Auth context
+  // Check session independently from the Auth context with a guaranteed timeout
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    
     const checkAccess = async () => {
       try {
+        // Set a 3-second safety timeout to ensure we never get stuck
+        timeoutId = setTimeout(() => {
+          console.log('SuperAdminRoute: Safety timeout triggered');
+          // Set access based on email
+          const storedData = localStorage.getItem('sb-fgnvobekfychilwomxij-auth-token');
+          if (storedData) {
+            try {
+              const data = JSON.parse(storedData);
+              if (data?.user?.email === 'armandmorin@gmail.com') {
+                console.log('SuperAdminRoute: Emergency access granted from localStorage');
+                setAccess(true);
+                return;
+              }
+            } catch (e) {
+              console.error('Error parsing localStorage:', e);
+            }
+          }
+          setAccess(false);
+        }, 3000);
+        
         // First get the current session
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         
@@ -42,6 +64,8 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
           const roleInJWT = sessionData.session.user.app_metadata?.role;
           if (roleInJWT === 'superadmin') {
             console.log('SuperAdminRoute: JWT contains superadmin role');
+            // Clear timeout and set access
+            if (timeoutId) clearTimeout(timeoutId);
             setAccess(true);
             return;
           }
@@ -53,6 +77,9 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
           .select('role')
           .eq('id', sessionData.session.user.id)
           .single();
+          
+        // Clear the timeout since we've completed the check
+        if (timeoutId) clearTimeout(timeoutId);
           
         if (profileError) {
           console.error('SuperAdminRoute: Error fetching profile:', profileError);
@@ -71,6 +98,8 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
         setAccess(isArmand);
       } catch (err) {
         console.error('SuperAdminRoute: Unexpected error checking access:', err);
+        // Clear timeout since we're done
+        if (timeoutId) clearTimeout(timeoutId);
         // If we're having errors, let Armand in as a fallback
         setAccess(isArmand);
       }
@@ -78,7 +107,12 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
     
     // Run the check
     checkAccess();
-  }, []);
+    
+    // Clean up timeout if component unmounts
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isArmand]);
   
   // Show loading spinner while we're determining access
   if (access === null) {
