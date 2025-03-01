@@ -227,6 +227,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(null);
           setLoading(false);
         }
+        
+        // Always ensure loading is set to false
+        setTimeout(() => {
+          setLoading(prevLoading => {
+            if (prevLoading) {
+              console.log('checkForActiveSession: Safety timeout - resetting loading state');
+              return false;
+            }
+            return prevLoading;
+          });
+        }, 3000);
       } catch (error) {
         console.error('Error checking session:', error);
         setUser(null);
@@ -318,6 +329,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       if (error) {
         console.error('Supabase auth error:', error);
+        setError(error.message);
+        setLoading(false); // Important: reset loading state on error
         throw error;
       }
       

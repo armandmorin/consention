@@ -79,12 +79,23 @@ const Login: React.FC = () => {
       setIsSubmitting(true);
       console.log('Form submitted, calling login...');
       await login(email, password);
+      
+      // Check if there was an error after login attempt
+      if (error) {
+        console.log('Login returned with error:', error);
+        setIsSubmitting(false);
+      }
     } catch (err) {
       console.error('Login form error:', err);
       setPassword('');
       setIsSubmitting(false);
       // Force reset the auth loading state if there's an error
       window.dispatchEvent(new Event('auth:forceReset'));
+    } finally {
+      // Safety timeout to reset button state if login takes too long
+      setTimeout(() => {
+        setIsSubmitting(false);
+      }, 5000);
     }
   };
   
