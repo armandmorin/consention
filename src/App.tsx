@@ -39,43 +39,9 @@ import ClientAnalytics from './pages/client/Analytics';
 // Removed middleware entirely to simplify rendering flow
 
 function App() {
-  // Handle routing and localStorage synchronization
+  // Simplified app initialization
   useEffect(() => {
-    console.log('App mounted, initializing...');
-    
-    // We don't need to store anything special for armandmorin@gmail.com now
-    // Our SuperAdminRoute handles this directly
-    
-    // Set up session restoration handlers with direct function references
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible') {
-        console.log('Document became visible, checking session...');
-        try {
-          const { data, error } = await supabase.auth.refreshSession();
-          console.log('Session refresh result:', !error && data.session ? 'success' : 'failed');
-        } catch (err) {
-          console.error('Error refreshing session:', err);
-        }
-      }
-    };
-    
-    const handleFocus = async () => {
-      console.log('Window focused, checking session...');
-      try {
-        const { data, error } = await supabase.auth.refreshSession();
-        console.log('Session refresh result:', !error && data.session ? 'success' : 'failed');
-      } catch (err) {
-        console.error('Error refreshing session:', err);
-      }
-    };
-    
-    // Add event listeners
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-    
-    // Start session handling and get cleanup function
-    // The cleanup function will be returned by useEffect directly
-    
+    // Let Supabase handle session refresh automatically
     // Handle 404 redirects from sessionStorage (set by 404.html)
     try {
       const redirectData = sessionStorage.getItem('redirect');
@@ -85,7 +51,6 @@ function App() {
         
         // Parse the saved location data
         const { pathname } = JSON.parse(redirectData);
-        console.log('Handling redirect from 404 page to:', pathname);
         
         // Let the app initialize first, then navigate
         setTimeout(() => {
@@ -97,22 +62,6 @@ function App() {
     } catch (e) {
       console.error('Error handling redirect:', e);
     }
-    
-    // Set up unload handler to help with session persistence
-    const handleBeforeUnload = () => {
-      // Log that we're about to unload
-      console.log('Page about to unload, preserving auth state');
-    };
-    
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    // Return cleanup function for all event listeners
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-      console.log('App cleanup executed');
-    };
   }, []);
   
   return (

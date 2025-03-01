@@ -37,77 +37,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Initialize user from Supabase session using standard patterns
+  // Initialize user from Supabase session with simplified approach
   useEffect(() => {
-    console.log('Auth provider mounted - setting up authentication');
-    
-    // Function to check localStorage for auth token
-    const checkStoredAuth = () => {
-      try {
-        // Get the storage key
-        const PROJECT_ID = import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0];
-        const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
-        
-        // Check for stored session
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          console.log('Found stored session in localStorage');
-          return true;
-        } else {
-          console.log('No stored session found in localStorage');
-          return false;
-        }
-      } catch (err) {
-        console.error('Error checking stored auth:', err);
-        return false;
-      }
-    };
-    
-    // Function to fetch user profile data 
-    const fetchUserProfile = async (userId: string): Promise<any> => {
-      try {
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single();
-          
-        if (profileError) {
-          console.error('Error fetching profile:', profileError);
-          return null;
-        }
-        
-        return profile;
-      } catch (e) {
-        console.error('Exception fetching profile:', e);
-        return null;
-      }
-    };
-    
-    // Process authenticated user data with JWT role check
+    // Process authenticated user data - simplified
     const processAuthenticatedUser = async (userId: string, email: string) => {
-      console.log('Processing authenticated user:', email);
+      // Get profile data for complete user info
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
       
-      // First try to get role from JWT claims
-      const roleFromJWT = await getUserRoleFromSession();
-      if (roleFromJWT) {
-        console.log('Found role in JWT claims:', roleFromJWT);
-      }
-      
-      // Always fetch profile for complete user data
-      const profile = await fetchUserProfile(userId);
-      
+      // Get role from JWT if available
+      const { data: session } = await supabase.auth.getSession();
+      const roleFromJWT = session?.session?.user?.app_metadata?.role;
+
       if (profile) {
-        console.log('Found user profile:', profile);
-        
         // Determine user role - prioritize JWT if available
         let userRole: UserRole = 'client';
         
         if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
-          console.log('User is a superadmin!');
           userRole = 'superadmin';
         } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
-          console.log('User is an admin!');
           userRole = 'admin';
         }
         
@@ -120,10 +71,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           organization: profile.organization
         });
       } else {
-        // Session exists but no profile found (unusual case)
-        console.warn('Session exists but no profile found! Creating minimal user');
-        
-        // Create a minimal user with default client privileges
+        // Create minimal user if no profile found
         setUser({
           id: userId,
           email: email || '',
@@ -136,91 +84,65 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setLoading(false);
     };
     
-    // Main function to check for an active session
-    const checkForActiveSession = async () => {
-      try {
-        console.log('Checking for active Supabase session...');
-        
-        // Get current session from Supabase
-        const { data, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error('Error getting session:', error);
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-        
-        // If we have a valid session, process the user
-        if (data.session) {
-          console.log('Found active session for:', data.session.user.email);
-          console.log('User ID:', data.session.user.id);
-          
-          // Check for role in JWT claims
-          console.log('JWT app_metadata:', data.session.user.app_metadata);
-          
-          await processAuthenticatedUser(
-            data.session.user.id, 
-            data.session.user.email || ''
-          );
-        } else {
-          // No active session
-          console.log('No active session found');
-          setUser(null);
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error('Error checking session:', error);
-        setUser(null);
-        setLoading(false);
-      }
-    };
-    
     // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event);
-        
         if (event === 'SIGNED_IN' && session) {
-          console.log('User signed in:', session.user.email);
           setLoading(true);
           await processAuthenticatedUser(
             session.user.id,
             session.user.email || ''
           );
         } else if (event === 'SIGNED_OUT') {
-          console.log('User signed out');
           setUser(null);
           setLoading(false);
         } else if (event === 'TOKEN_REFRESHED') {
-          console.log('Token refreshed');
           if (session) {
-            // Re-process user on token refresh to get updated claims
+            // Only refresh user data if we don't already have the user
+            if (!user) {
+              await processAuthenticatedUser(
+                session.user.id,
+                session.user.email || ''
+              );
+            }
+          }
+        } else if (event === 'INITIAL_SESSION') {
+          if (session) {
             await processAuthenticatedUser(
               session.user.id,
               session.user.email || ''
             );
+          } else {
+            setLoading(false);
           }
         }
       }
     );
     
-    // Add a safety timeout to ensure loading state is reset (shorter timeout)
-    const safetyTimer = setTimeout(() => {
-      if (loading) {
-        console.warn('Auth loading state was stuck for 2 seconds, forcing it to false');
-        setLoading(false);
-      }
-    }, 2000);
-    
     // Check for active session immediately
-    checkForActiveSession();
+    const checkSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error || !data.session) {
+        setLoading(false);
+        return;
+      }
+      
+      // Only process if we haven't already
+      if (!user) {
+        await processAuthenticatedUser(
+          data.session.user.id,
+          data.session.user.email || ''
+        );
+      }
+    };
+    
+    checkSession();
     
     return () => {
       subscription.unsubscribe();
-      clearTimeout(safetyTimer);
     };
-  }, []);
+  }, [user]);
 
   // Login function
   const login = async (email: string, password: string) => {
@@ -381,29 +303,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Logout function
+  // Simplified logout function
   const logout = async () => {
     try {
-      console.log('Logging out...');
-      
-      // Clear local state first
-      setUser(null);
-      
-      // Clear any UI-related settings
-      localStorage.removeItem('brandSettings');
-      
       // Sign out from Supabase - this will clear the auth token
       await supabase.auth.signOut();
-      
-      console.log('Successfully logged out');
-      
-      // Skip React navigation and directly force reload to the login page
-      window.location.href = '/login';
+      // Clear local state after signout
+      setUser(null);
+      // Navigate to login page
+      navigate('/login');
     } catch (err) {
       console.error('Logout error:', err);
-      
-      // Force reload to login page even if there's an error
-      window.location.href = '/login';
+      // Still navigate to login if there was an error
+      navigate('/login');
     }
   };
 
