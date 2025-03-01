@@ -4,10 +4,28 @@ import ReactDOM from 'react-dom/client'
 import './index.css'
 import App from './App'
 
-// Make React available in the global scope for compatibility
-window.React = React;
+// Basic session persistence check on page load
+const checkPersistedSession = () => {
+  try {
+    const PROJECT_ID = 'fgnvobekfychilwomxij';
+    const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
+    
+    const storedData = localStorage.getItem(STORAGE_KEY);
+    if (storedData) {
+      const data = JSON.parse(storedData);
+      console.log('Found persisted session for:', data?.user?.email || 'unknown user');
+    } else {
+      console.log('No persisted session found in localStorage');
+    }
+  } catch (e) {
+    console.error('Error checking persisted session:', e);
+  }
+};
 
-// Using StrictMode is fine now that we have the Vercel routing configuration
+// Check session state on load before React even starts
+checkPersistedSession();
+
+// Render the app
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

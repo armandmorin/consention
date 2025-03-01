@@ -1,36 +1,72 @@
-import React, { ReactNode, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface AdminRouteProps {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
+// Direct AdminRoute component that doesn't rely on loading state
 const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
-
-  // Removed potentially problematic reload effect
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <div className="animate-spin h-10 w-10 border-4 border-blue-500 rounded-full border-t-transparent"></div>
-      </div>
-    );
+  const [directAccess, setDirectAccess] = useState<boolean | null>(null);
+  
+  // Perform a direct session check without going through Auth context
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        // If we already have a user with admin role from context, don't bother checking
+        if (user?.role === 'admin' || user?.role === 'superadmin') {
+          return;
+        }
+        
+        // Get session directly from Supabase
+        const { data } = await supabase.auth.getSession();
+        
+        if (data?.session) {
+          // Check for admin access
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', data.session.user.id)
+            .single();
+            
+          if (profile?.role === 'admin' || profile?.role === 'superadmin' || 
+              data.session.user.app_metadata?.role === 'admin' || 
+              data.session.user.app_metadata?.role === 'superadmin') {
+            setDirectAccess(true);
+            return;
+          }
+        }
+        
+        setDirectAccess(false);
+      } catch (err) {
+        setDirectAccess(false);
+      }
+    };
+    
+    checkSession();
+  }, [user]);
+  
+  // If we have a user with admin/superadmin role from context, render children
+  if (user?.role === 'admin' || user?.role === 'superadmin') {
+    return <>{children}</>;
   }
-
-  if (!user) {
-    console.log('No user found in AdminRoute, redirecting to login');
-    return <Navigate to="/login" replace />;
+  
+  // If we've confirmed direct access, render children
+  if (directAccess) {
+    return <>{children}</>;
   }
-
-  if (user.role !== 'admin' && user.role !== 'superadmin') {
-    console.log('User does not have admin privileges, redirecting to home');
-    return <Navigate to="/" replace />;
+  
+  // If we've confirmed no access, redirect
+  if (directAccess === false && user?.role !== 'admin' && user?.role !== 'superadmin') {
+    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
-
-  return <>{children}</>;
+  
+  // While checking, render a blank component
+  return null;
 };
 
 export default AdminRoute;

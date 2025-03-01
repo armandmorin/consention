@@ -39,9 +39,22 @@ import ClientAnalytics from './pages/client/Analytics';
 // Removed middleware entirely to simplify rendering flow
 
 function App() {
-  // Simplified app initialization
+  // Enhanced app initialization with session refresh
   useEffect(() => {
-    // Let Supabase handle session refresh automatically
+    // Immediately attempt to refresh the session when app loads
+    const refreshSession = async () => {
+      try {
+        // Try to refresh the token
+        const { data, error } = await supabase.auth.refreshSession();
+        console.log('Session refresh on app load:', error ? 'failed' : 'success');
+      } catch (e) {
+        console.error('Error refreshing session on app load:', e);
+      }
+    };
+    
+    // Refresh session on app load
+    refreshSession();
+    
     // Handle 404 redirects from sessionStorage (set by 404.html)
     try {
       const redirectData = sessionStorage.getItem('redirect');
@@ -62,6 +75,19 @@ function App() {
     } catch (e) {
       console.error('Error handling redirect:', e);
     }
+    
+    // Set up listener for session persistence issues
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key?.includes('supabase') && !event.newValue) {
+        console.warn('Supabase session was cleared from storage!');
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
   
   return (
