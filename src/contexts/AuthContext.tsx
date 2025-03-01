@@ -185,23 +185,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // If we got user from localStorage but server says no session,
           // we need to attempt to refresh the token
           if (loadedFromStorage) {
-            console.log('Attempting to refresh token from stored session...');
-            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-            
-            if (refreshError || !refreshData.session) {
-              console.error('Failed to refresh session:', refreshError);
-              // Keep localStorage user data but mark loading as complete
-              setLoading(false);
-              return;
-            } else {
-              console.log('Successfully refreshed session');
-              // Process with the refreshed session
-              await processAuthenticatedUser(
-                refreshData.session.user.id,
-                refreshData.session.user.email || ''
-              );
-              return;
-            }
+            console.log('Session found in localStorage but not on server - keeping local data');
+            // Don't attempt to refresh - just use localStorage data
+            setLoading(false);
+            return;
           }
           
           setLoading(false);

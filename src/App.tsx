@@ -39,21 +39,10 @@ import ClientAnalytics from './pages/client/Analytics';
 // Removed middleware entirely to simplify rendering flow
 
 function App() {
-  // Enhanced app initialization with session refresh
+  // Simple app initialization without token refresh
   useEffect(() => {
-    // Immediately attempt to refresh the session when app loads
-    const refreshSession = async () => {
-      try {
-        // Try to refresh the token
-        const { data, error } = await supabase.auth.refreshSession();
-        console.log('Session refresh on app load:', error ? 'failed' : 'success');
-      } catch (e) {
-        console.error('Error refreshing session on app load:', e);
-      }
-    };
-    
-    // Refresh session on app load
-    refreshSession();
+    // Do not attempt to refresh the session - let AuthContext handle this
+    console.log('App mounted');
     
     // Handle 404 redirects from sessionStorage (set by 404.html)
     try {
