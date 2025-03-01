@@ -22,7 +22,7 @@ interface AddAdminForm {
 }
 
 const AdminManagement: React.FC = () => {
-  const { signup } = useAuth();
+  const auth = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -50,67 +50,75 @@ const AdminManagement: React.FC = () => {
         setLoading(true);
         console.log('Fetching admin accounts...');
         
-        // Just use standard session - no refresh needed on first load
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('role', 'admin');
-          
-        if (error) {
-          console.warn('Error fetching admins, will retry once:', error);
-          
-          // Wait a moment and retry
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const { data: retryData, error: retryError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('role', 'admin');
+        // First verify we have a valid session
+        const { data: sessionData } = await supabase.auth.getSession();
+        
+        if (!sessionData.session) {
+          console.error('No active session found when fetching admin data');
+          setLoading(false);
+          return;
+        }
+        
+        // Use retry pattern for data fetching
+        let attempt = 0;
+        let maxAttempts = 3;
+        let success = false;
+        
+        while (attempt < maxAttempts && !success) {
+          try {
+            // Fetch profiles from database
+            const { data, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('role', 'admin');
+              
+            if (error) {
+              console.warn(`Error fetching admins (attempt ${attempt + 1}/${maxAttempts}):`, error);
+              attempt++;
+              // Wait longer between each retry
+              await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+              continue;
+            }
             
-          if (retryError) throw retryError;
-          if (!retryData) throw new Error('No data returned from retry');
-          
-          // Format data to match Admin interface
-          const formattedAdmins: Admin[] = retryData.map(profile => ({
-            id: profile.id,
-            name: profile.name || '',
-            email: profile.email || '',
-            company: profile.organization || '',
-            clients: 0,
-            status: 'active',
-            joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
-          }));
-          
-          console.log('Loaded admin accounts from retry:', formattedAdmins.length);
-          setAdmins(formattedAdmins);
-        } else {
-          // Use data from first successful attempt
-          const formattedAdmins: Admin[] = data.map(profile => ({
-            id: profile.id,
-            name: profile.name || '',
-            email: profile.email || '',
-            company: profile.organization || '',
-            clients: 0,
-            status: 'active',
-            joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
-          }));
-          
-          console.log('Loaded admin accounts:', formattedAdmins.length);
-          setAdmins(formattedAdmins);
+            // Format data to match Admin interface
+            const formattedAdmins: Admin[] = data.map(profile => ({
+              id: profile.id,
+              name: profile.name || '',
+              email: profile.email || '',
+              company: profile.organization || '',
+              clients: 0, 
+              status: 'active',
+              joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
+            }));
+            
+            console.log('Loaded admin accounts:', formattedAdmins.length);
+            setAdmins(formattedAdmins);
+            success = true;
+          } catch (err) {
+            console.error(`Fetch attempt ${attempt + 1}/${maxAttempts} failed:`, err);
+            attempt++;
+            // Wait between retries
+            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+          }
+        }
+        
+        if (!success) {
+          setError('Failed to load admin accounts after multiple attempts');
         }
       } catch (err) {
-        console.error('Error fetching admins:', err);
+        console.error('Error in admin fetch process:', err);
         setError('Failed to load admin accounts');
       } finally {
         setLoading(false);
       }
     };
     
-    // Only fetch data if we have signup function available (which means we're authenticated)
-    if (signup) {
+    // Use the auth context's user object to determine when to fetch data
+    // This ensures we only fetch when we have a valid authenticated user
+    if (auth.user) {
       fetchAdmins();
     }
-  }, [signup]);
+  }, [auth.user]);
 
   const filteredAdmins = admins.filter(admin => 
     admin.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -129,7 +137,7 @@ const AdminManagement: React.FC = () => {
       setLoading(true);
       
       // Use the signup function from AuthContext to create the admin
-      const result = await signup(
+      const result = await auth.signup(
         addForm.email,       // email
         addForm.password,    // password
         addForm.name,        // name

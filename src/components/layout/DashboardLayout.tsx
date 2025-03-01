@@ -76,18 +76,25 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
 
   // No loading state detection needed anymore
   
-  // Simple loading state
+  // Enhanced loading state that shows more debugging info
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-100">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+      <div className="h-screen flex flex-col items-center justify-center bg-gray-100">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent mb-4"></div>
+        <p className="text-gray-600 text-sm">Loading dashboard...</p>
       </div>
     );
   }
   
-  // Don't render if not authenticated
+  // Show a different message if we're not authenticated at all
   if (!user) {
-    return null; // useEffect will handle redirect
+    // Redirect will happen in useEffect
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-gray-100">
+        <p className="text-red-600 mb-2">Authentication required</p>
+        <p className="text-gray-600 text-sm">Redirecting to login...</p>
+      </div>
+    );
   }
   
   return (

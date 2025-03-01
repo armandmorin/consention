@@ -39,46 +39,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Initialize user from localStorage first, then validate with Supabase
   useEffect(() => {
-    // Try to get user directly from localStorage first for immediate UI rendering
-    const loadUserFromLocalStorage = () => {
-      try {
-        // Get the storage key
-        const PROJECT_ID = 'fgnvobekfychilwomxij';
-        const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
-        
-        // Check localStorage for stored session
-        const stored = localStorage.getItem(STORAGE_KEY);
-        
-        if (stored) {
-          // Parse the stored session data
-          const parsedData = JSON.parse(stored);
-          if (parsedData?.user) {
-            // Extract user info
-            const userData = parsedData.user;
-            
-            // Set a temporary user object to avoid loading state
-            setUser({
-              id: userData.id,
-              email: userData.email || '',
-              name: userData.user_metadata?.name || userData.email?.split('@')[0] || 'User',
-              role: (userData.app_metadata?.role as UserRole) || 'client',
-              organization: null
-            });
-            
-            // Still mark as loading while we validate with the server
-            return true;
-          }
-        }
-        return false;
-      } catch (e) {
-        console.error('Error loading user from localStorage:', e);
-        return false;
-      }
-    };
-    
     // Process authenticated user data after validating with server
     const processAuthenticatedUser = async (userId: string, email: string) => {
       try {
+        console.log('Processing authenticated user:', userId);
+        
         // Get profile data for complete user info
         const { data: profile } = await supabase
           .from('profiles')
@@ -119,10 +84,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           });
         }
         
+        // Always finish by turning off loading
         setLoading(false);
       } catch (err) {
         console.error('Error processing user data:', err);
-        // Don't reset user if we already set it from localStorage
+        // Make sure to reset loading state
         setLoading(false);
       }
     };
@@ -130,6 +96,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state change:', event);
+        
         if (event === 'SIGNED_IN' && session) {
           setLoading(true);
           await processAuthenticatedUser(
@@ -140,9 +108,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(null);
           setLoading(false);
         } else if (event === 'TOKEN_REFRESHED') {
-          console.log('Token refreshed:', session?.user.email);
           if (session) {
-            // Always refresh user data on token refresh
+            setLoading(true);
             await processAuthenticatedUser(
               session.user.id,
               session.user.email || ''
@@ -150,6 +117,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         } else if (event === 'INITIAL_SESSION') {
           if (session) {
+            setLoading(true);
             await processAuthenticatedUser(
               session.user.id,
               session.user.email || ''
@@ -161,57 +129,46 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     );
     
-    // Enhanced session check that uses localStorage data first
+    // Simpler direct session check on mount
     const checkSession = async () => {
       try {
-        // First try to load user from localStorage for instant UI
-        const loadedFromStorage = loadUserFromLocalStorage();
-        
-        // Always check with Supabase server
+        setLoading(true);
+        // Get session from Supabase
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Error getting session from server:', error);
-          // If we loaded from localStorage, keep that data
-          if (!loadedFromStorage) {
-            setLoading(false);
-          }
-          return;
-        }
-        
-        if (!data.session) {
-          console.log('No active session found on server');
-          
-          // If we got user from localStorage but server says no session,
-          // we need to attempt to refresh the token
-          if (loadedFromStorage) {
-            console.log('Session found in localStorage but not on server - keeping local data');
-            // Don't attempt to refresh - just use localStorage data
-            setLoading(false);
-            return;
-          }
-          
+          console.error('Error getting session:', error);
           setLoading(false);
           return;
         }
         
-        // We have a valid session from the server, update user data
-        await processAuthenticatedUser(
-          data.session.user.id,
-          data.session.user.email || ''
-        );
+        // If we have a session, process the user data
+        if (data.session) {
+          await processAuthenticatedUser(
+            data.session.user.id,
+            data.session.user.email || ''
+          );
+        } else {
+          // No session found
+          setUser(null);
+          setLoading(false);
+        }
       } catch (err) {
         console.error('Error checking session:', err);
         setLoading(false);
       }
     };
     
+    // Start by checking for an existing session
+    checkSession();
+    
     // Add a safety timeout to ensure loading state resets
     const safetyTimer = setTimeout(() => {
-      setLoading(false);
+      if (loading) {
+        console.log('Safety timeout triggered - resetting loading state');
+        setLoading(false);
+      }
     }, 3000);
-    
-    checkSession();
     
     return () => {
       subscription.unsubscribe();
