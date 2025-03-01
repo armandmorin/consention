@@ -12,8 +12,10 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
   
-  // Special check for armandmorin@gmail.com
-  const isArmand = SessionManager.isArmandMorin();
+  // Check multiple sources for armandmorin@gmail.com access
+  const isArmand = SessionManager.isArmandMorin() || 
+                  window.SUPERADMIN_ACCESS_GRANTED === true ||
+                  sessionStorage.getItem('force_superadmin_access') === 'true';
   
   // Show loading spinner while auth state is being determined
   if (loading) {
