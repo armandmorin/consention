@@ -1,153 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Shield, Mail, Lock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
-
-interface LocationState {
-  message?: string;
-}
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { login, loading, error, user } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
-  const state = location.state as LocationState;
-  const message = state?.message;
   
-  // Enhanced login page with direct Supabase session check
+  // Check if user is already logged in
   useEffect(() => {
-    let isMounted = true;
-    console.log('Login page loaded, checking auth state');
-    
-    // Direct Supabase session check that doesn't rely on context
-    const checkDirectSession = async () => {
-      try {
-        console.log('Login page checking Supabase session directly');
-        const { data, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error('Error checking session on login page:', error);
-          return;
-        }
-        
-        if (data.session) {
-          console.log('Login page found active session for:', data.session.user.email);
-          
-          // If we have a session but no user in context, navigate based on role
-          const role = data.session.user.app_metadata?.role;
-          
-          if (role === 'superadmin') {
-            console.log('Direct session check: user is superadmin, redirecting');
-            navigate('/superadmin');
-            return;
-          } else if (role === 'admin') {
-            console.log('Direct session check: user is admin, redirecting');
-            navigate('/admin');
-            return;
-          }
-          
-          // If we can't determine role from JWT, try the database
-          try {
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('role')
-              .eq('id', data.session.user.id)
-              .single();
-              
-            if (profileData?.role === 'superadmin') {
-              navigate('/superadmin');
-              return;
-            } else if (profileData?.role === 'admin') {
-              navigate('/admin');
-              return;
-            } else if (profileData?.role === 'client') {
-              navigate('/client');
-              return;
-            }
-          } catch (err) {
-            console.error('Error getting profile in login page:', err);
-          }
-          
-          // Default case - if we have a session but couldn't determine role
-          navigate('/client');
-        }
-      } catch (err) {
-        console.error('Login page session check error:', err);
+    if (user) {
+      if (user.role === 'superadmin') {
+        navigate('/superadmin');
+      } else if (user.role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/client');
       }
-    };
-    
-    // Redirect authenticated users based on context
-    const redirectIfLoggedIn = () => {
-      if (user && isMounted) {
-        console.log(`User already logged in as ${user.role}, redirecting...`);
-        
-        if (user.role === 'superadmin') {
-          navigate('/superadmin');
-        } else if (user.role === 'admin') {
-          navigate('/admin');
-        } else if (user.role === 'client') {
-          navigate('/client');
-        }
-      }
-    };
-    
-    // Check both methods
-    checkDirectSession();
-    redirectIfLoggedIn();
-    
-    return () => {
-      isMounted = false;
-      console.log('Login page unmounted');
-    };
+    }
   }, [user, navigate]);
-
+  
+  // Simple form submit handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      console.log('Form submitted, calling login...');
-      await login(email, password);
-    } catch (err) {
-      console.error('Login form error:', err);
-      // Reset form on error for a better user experience
-      setPassword('');
-      // Force reset loading state if there's an error
-      window.dispatchEvent(new Event('auth:forceReset'));
-    }
-  };
-
-  // Local loading state to avoid using context loading state
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Modified submit handler that uses local state
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (isSubmitting) return; // Prevent multiple submissions
+    if (loading) return;
     
     try {
-      setIsSubmitting(true);
-      console.log('Form submitted, calling login...');
       await login(email, password);
-      
-      // Check if there was an error after login attempt
-      if (error) {
-        console.log('Login returned with error:', error);
-        setIsSubmitting(false);
-      }
     } catch (err) {
-      console.error('Login form error:', err);
-      setPassword('');
-      setIsSubmitting(false);
-      // Force reset the auth loading state if there's an error
-      window.dispatchEvent(new Event('auth:forceReset'));
-    } finally {
-      // Safety timeout to reset button state if login takes too long
-      setTimeout(() => {
-        setIsSubmitting(false);
-      }, 5000);
+      console.error('Login error:', err);
     }
   };
   
@@ -168,19 +51,6 @@ const Login: React.FC = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          {message && (
-            <div className="mb-4 rounded-md bg-green-50 p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <AlertCircle className="h-5 w-5 text-green-400" aria-hidden="true" />
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-green-800">{message}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
           {error && (
             <div className="mb-4 rounded-md bg-red-50 p-4">
               <div className="flex">
@@ -194,7 +64,7 @@ const Login: React.FC = () => {
             </div>
           )}
 
-          <form className="space-y-6" onSubmit={handleFormSubmit}>
+          <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email address
@@ -261,10 +131,10 @@ const Login: React.FC = () => {
             <div>
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={loading}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                {isSubmitting ? 'Signing in...' : 'Sign in'}
+                {loading ? 'Signing in...' : 'Sign in'}
               </button>
             </div>
           </form>

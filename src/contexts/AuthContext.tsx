@@ -158,161 +158,73 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, []); // Empty dependency array ensures it only runs on mount
 
-  // Login function
+  // Simple login function
   const login = async (email: string, password: string) => {
     try {
       setLoading(true);
       setError(null);
       
-      console.log('Login attempt for:', email);
-      
       // Authenticate with Supabase
-      console.log('Authenticating with Supabase...');
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
       
       if (error) {
-        console.error('Supabase auth error:', error);
         setError(error.message);
         setLoading(false);
-        throw error;
+        return;
       }
       
       if (!data.session) {
-        console.error('Authentication succeeded but no session was returned');
-        throw new Error('Authentication problem: No session returned');
+        setError('No session returned');
+        setLoading(false);
+        return;
       }
       
-      console.log('Authentication successful, session established');
-      
-      // Fetch the user's profile directly from the database
-      console.log('Fetching user profile for ID:', data.user.id);
+      // Fetch user profile
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', data.user.id)
         .single();
-        
-      console.log('Profile query result:', profile, profileError);
-        
-      // Handle profile data retrieval
-      if (profileError) {
-        console.error('Error fetching profile after login:', profileError);
-        
-        // For "not found" errors, create a new profile
-        if (profileError.code === 'PGRST116') {
-          console.log('Profile not found, creating one for new user');
-          
-          // Default role for new users is client
-          const defaultRole: UserRole = 'client';
-          
-          // Create a new profile in the database
-          const { data: newProfile, error: insertError } = await supabase
-            .from('profiles')
-            .insert([
-              {
-                id: data.user.id,
-                email: data.user.email || '',
-                name: data.user.user_metadata?.name || email.split('@')[0],
-                role: defaultRole
-              }
-            ])
-            .select()
-            .single();
-          
-          if (insertError) {
-            console.error('Failed to create user profile:', insertError);
-            // Create minimal user
-            const minimalUser = {
-              id: data.user.id,
-              email: data.user.email || '',
-              name: email.split('@')[0],
-              role: 'client' as UserRole
-            };
-            
-            setUser(minimalUser);
-            setLoading(false);
-            navigate('/client');
-            return;
-          }
-          
-          // If profile creation succeeded, set up user with new profile
-          const userWithNewProfile = {
-            id: data.user.id,
-            email: data.user.email || '',
-            name: newProfile?.name || '',
-            role: newProfile?.role as UserRole || 'client',
-            organization: newProfile?.organization
-          };
-          
-          setUser(userWithNewProfile);
-          setLoading(false);
-          navigate('/client');
-          return;
+      
+      // Determine user role
+      let userRole: UserRole = 'client';
+      const roleFromJWT = data.user.app_metadata?.role;
+      
+      if (profile) {
+        // Use profile data
+        if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
+          userRole = 'superadmin';
+        } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
+          userRole = 'admin';
         }
         
-        // Last resort: Continue with minimal user info
-        console.log('Using minimal user info as last resort');
-        const minimalUser = {
+        setUser({
           id: data.user.id,
           email: data.user.email || '',
-          name: data.user.user_metadata?.name || email.split('@')[0],
-          role: 'client' as UserRole
-        };
-        
-        setUser(minimalUser);
-        setLoading(false);
-        navigate('/client');
-        return;
+          name: profile.name || '',
+          role: userRole,
+          organization: profile.organization
+        });
+      } else {
+        // No profile found
+        setUser({
+          id: data.user.id,
+          email: data.user.email || '',
+          name: email.split('@')[0],
+          role: roleFromJWT as UserRole || 'client',
+          organization: null
+        });
       }
       
-      // Profile exists, set up user with role
-      console.log('User profile found:', profile);
-      
-      // Determine user role by checking JWT claims first, then profile
-      let userRole: UserRole = 'client';
-      
-      // First check JWT claims
-      const roleFromJWT = data.user.app_metadata?.role as UserRole;
-      
-      if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
-        console.log('User is a superadmin!');
-        userRole = 'superadmin';
-      } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
-        userRole = 'admin';
-      }
-      
-      // Create complete user data
-      const userData = {
-        id: data.user.id,
-        email: data.user.email || '',
-        name: profile.name || '',
-        role: userRole,
-        organization: profile.organization
-      };
-      
-      // Set user in context
-      setUser(userData);
-      
-      console.log('Login successful, redirecting to dashboard');
-      
-      // Set loading to false before redirect
       setLoading(false);
       
-      // Redirect based on role
-      if (userRole === 'superadmin') {
-        navigate('/superadmin');
-      } else if (userRole === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/client');
-      }
+      // Navigation will happen automatically via the useEffect in the Login component
     } catch (err) {
       console.error('Login failed:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during login');
-      setUser(null);
       setLoading(false);
     }
   };
