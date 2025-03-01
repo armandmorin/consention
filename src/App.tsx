@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 // Auth pages
@@ -10,6 +11,9 @@ import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import SuperAdminRoute from './components/SuperAdminRoute';
+
+// Import SessionManager directly to avoid dynamic imports in components
+import { SessionManager } from './lib/supabase';
 
 // Public pages
 import LandingPage from './pages/public/LandingPage';
@@ -36,34 +40,31 @@ import ClientAnalytics from './pages/client/Analytics';
 
 function App() {
   // Handle routing and localStorage synchronization
-  React.useEffect(() => {
+  useEffect(() => {
     console.log('App mounted, initializing...');
     
-    // Initialize session management
-    import('./lib/supabase').then(module => {
-      const { SessionManager } = module;
-      SessionManager.init().then(result => {
-        console.log('Session initialized:', result);
-      });
+    // Initialize session management directly (no dynamic import)
+    SessionManager.init().then(result => {
+      console.log('Session initialized:', result);
     }).catch(err => {
-      console.error('Failed to import SessionManager:', err);
+      console.error('Failed to initialize SessionManager:', err);
     });
     
     // Set up session restoration handlers with direct function references
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         console.log('Document became visible, checking session...');
-        import('./lib/supabase').then(module => {
-          module.SessionManager.restore();
-        });
+        SessionManager.restore()
+          .then(result => console.log('Session restore result:', result))
+          .catch(err => console.error('Error restoring session:', err));
       }
     };
     
     const handleFocus = () => {
       console.log('Window focused, checking session...');
-      import('./lib/supabase').then(module => {
-        module.SessionManager.restore();
-      });
+      SessionManager.restore()
+        .then(result => console.log('Session restore result:', result))
+        .catch(err => console.error('Error restoring session:', err));
     };
     
     // Add event listeners
@@ -114,8 +115,8 @@ function App() {
   
   return (
     <Router>
-      {/* Use key to force remount when URL changes */}
-      <AuthProvider key={window.location.pathname}>
+      {/* Remove the key prop - this was causing components to unmount and remount */}
+      <AuthProvider>
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<LandingPage />} />
