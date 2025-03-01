@@ -27,35 +27,58 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   const navigate = useNavigate();
   const { logout, user, loading } = useAuth();
   
-  // Check authentication status and redirect to login if needed
+  // Enhanced authentication check with direct session verification
   useEffect(() => {
     let isMounted = true;
+    let sessionCheckTimer: NodeJS.Timeout | null = null;
     
-    // Special check for armandmorin@gmail.com in superadmin area
-    const isArmandInSuperAdmin = async () => {
-      if (!location.pathname.includes('/superadmin')) return false;
-      
+    // Check directly for a valid session in localStorage or JWT
+    const checkDirectSession = async () => {
       try {
+        // First check email directly from session
         const { data, error } = await supabase.auth.getSession();
-        return !error && data.session?.user.email === 'armandmorin@gmail.com';
-      } catch {
+        
+        // If we have a valid session with armandmorin@gmail.com, stay on the page
+        if (!error && data.session?.user.email === 'armandmorin@gmail.com') {
+          console.log('DashboardLayout: Found active armandmorin@gmail.com session, staying on page');
+          return true;
+        }
+        
+        // Check JWT claims for role
+        if (!error && data.session?.user.app_metadata?.role === 'superadmin') {
+          console.log('DashboardLayout: Found superadmin role in JWT, staying on page');
+          return true;
+        }
+        
+        // No special case found
+        return false;
+      } catch (err) {
+        console.error('Error checking direct session:', err);
         return false;
       }
     };
     
-    // Only redirect if explicitly not logged in (not during initial loading)
+    // Only check auth and redirect if explicitly not logged in (not during initial loading)
     if (!loading && user === null) {
-      console.log('No user detected in DashboardLayout, redirecting to login');
-      // Use a microtask to ensure we don't redirect during render
-      Promise.resolve().then(() => {
-        if (isMounted) {
+      console.log('No user in AuthContext, checking direct session...');
+      
+      // Set a timeout to prevent redirect race conditions
+      sessionCheckTimer = setTimeout(async () => {
+        if (!isMounted) return;
+        
+        // Perform direct session check
+        const hasDirectSession = await checkDirectSession();
+        
+        if (!hasDirectSession && isMounted) {
+          console.log('No valid session found, redirecting to login');
           navigate('/login');
         }
-      });
+      }, 500); // Short delay to allow other checks to complete
     }
     
     return () => {
       isMounted = false;
+      if (sessionCheckTimer) clearTimeout(sessionCheckTimer);
     };
   }, [user, loading, navigate, location.pathname]);
   
