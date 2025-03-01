@@ -37,51 +37,94 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Very simple initialization of user from Supabase session
+  // Initialize user from localStorage first, then validate with Supabase
   useEffect(() => {
-    // Process authenticated user data without special cases
-    const processAuthenticatedUser = async (userId: string, email: string) => {
-      // Get profile data for complete user info
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      // Get role from JWT if available
-      const { data: session } = await supabase.auth.getSession();
-      const roleFromJWT = session?.session?.user?.app_metadata?.role;
-
-      if (profile) {
-        // Determine user role - prioritize JWT if available
-        let userRole: UserRole = 'client';
+    // Try to get user directly from localStorage first for immediate UI rendering
+    const loadUserFromLocalStorage = () => {
+      try {
+        // Get the storage key
+        const PROJECT_ID = 'fgnvobekfychilwomxij';
+        const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
         
-        if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
-          userRole = 'superadmin';
-        } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
-          userRole = 'admin';
+        // Check localStorage for stored session
+        const stored = localStorage.getItem(STORAGE_KEY);
+        
+        if (stored) {
+          // Parse the stored session data
+          const parsedData = JSON.parse(stored);
+          if (parsedData?.user) {
+            // Extract user info
+            const userData = parsedData.user;
+            
+            // Set a temporary user object to avoid loading state
+            setUser({
+              id: userData.id,
+              email: userData.email || '',
+              name: userData.user_metadata?.name || userData.email?.split('@')[0] || 'User',
+              role: (userData.app_metadata?.role as UserRole) || 'client',
+              organization: null
+            });
+            
+            // Still mark as loading while we validate with the server
+            return true;
+          }
+        }
+        return false;
+      } catch (e) {
+        console.error('Error loading user from localStorage:', e);
+        return false;
+      }
+    };
+    
+    // Process authenticated user data after validating with server
+    const processAuthenticatedUser = async (userId: string, email: string) => {
+      try {
+        // Get profile data for complete user info
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
+        
+        // Get role from JWT if available
+        const { data: session } = await supabase.auth.getSession();
+        const roleFromJWT = session?.session?.user?.app_metadata?.role;
+
+        if (profile) {
+          // Determine user role - prioritize JWT if available
+          let userRole: UserRole = 'client';
+          
+          if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
+            userRole = 'superadmin';
+          } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
+            userRole = 'admin';
+          }
+          
+          // Set the user state
+          setUser({
+            id: userId,
+            email: email || '',
+            name: profile.name || '',
+            role: userRole,
+            organization: profile.organization
+          });
+        } else {
+          // Create minimal user if no profile found
+          setUser({
+            id: userId,
+            email: email || '',
+            name: email?.split('@')[0] || 'User',
+            role: roleFromJWT as UserRole || 'client',
+            organization: null
+          });
         }
         
-        // Set the user state
-        setUser({
-          id: userId,
-          email: email || '',
-          name: profile.name || '',
-          role: userRole,
-          organization: profile.organization
-        });
-      } else {
-        // Create minimal user if no profile found
-        setUser({
-          id: userId,
-          email: email || '',
-          name: email?.split('@')[0] || 'User',
-          role: roleFromJWT as UserRole || 'client',
-          organization: null
-        });
+        setLoading(false);
+      } catch (err) {
+        console.error('Error processing user data:', err);
+        // Don't reset user if we already set it from localStorage
+        setLoading(false);
       }
-      
-      setLoading(false);
     };
     
     // Set up auth state change listener
@@ -118,23 +161,54 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     );
     
-    // Simple session check without extra complexity
+    // Enhanced session check that uses localStorage data first
     const checkSession = async () => {
       try {
-        // Get current session from Supabase
+        // First try to load user from localStorage for instant UI
+        const loadedFromStorage = loadUserFromLocalStorage();
+        
+        // Always check with Supabase server
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
-          setLoading(false);
+          console.error('Error getting session from server:', error);
+          // If we loaded from localStorage, keep that data
+          if (!loadedFromStorage) {
+            setLoading(false);
+          }
           return;
         }
         
         if (!data.session) {
+          console.log('No active session found on server');
+          
+          // If we got user from localStorage but server says no session,
+          // we need to attempt to refresh the token
+          if (loadedFromStorage) {
+            console.log('Attempting to refresh token from stored session...');
+            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+            
+            if (refreshError || !refreshData.session) {
+              console.error('Failed to refresh session:', refreshError);
+              // Keep localStorage user data but mark loading as complete
+              setLoading(false);
+              return;
+            } else {
+              console.log('Successfully refreshed session');
+              // Process with the refreshed session
+              await processAuthenticatedUser(
+                refreshData.session.user.id,
+                refreshData.session.user.email || ''
+              );
+              return;
+            }
+          }
+          
           setLoading(false);
           return;
         }
         
-        // Process the user data
+        // We have a valid session from the server, update user data
         await processAuthenticatedUser(
           data.session.user.id,
           data.session.user.email || ''
