@@ -1,6 +1,7 @@
 import React, { ReactNode, useState, useCallback, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { SessionManager } from '../../lib/supabase';
 import { 
   Shield, 
   Menu, 
@@ -30,8 +31,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   useEffect(() => {
     let isMounted = true;
     
+    // Special check for armandmorin@gmail.com in superadmin area
+    const isArmandInSuperAdmin = () => {
+      return location.pathname.includes('/superadmin') && SessionManager.isArmandMorin();
+    };
+    
     // Only redirect if explicitly not logged in (not during initial loading)
-    if (!loading && user === null) {
+    if (!loading && user === null && !isArmandInSuperAdmin()) {
       console.log('No user detected in DashboardLayout, redirecting to login');
       // Use a microtask to ensure we don't redirect during render
       Promise.resolve().then(() => {
@@ -44,7 +50,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
     return () => {
       isMounted = false;
     };
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, location.pathname]);
   
   // Determine user type from URL
   const isSuperAdmin = location.pathname.includes('/superadmin');

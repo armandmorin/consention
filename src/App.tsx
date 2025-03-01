@@ -43,9 +43,18 @@ function App() {
   useEffect(() => {
     console.log('App mounted, initializing...');
     
+    // Store special value for armandmorin@gmail.com in sessionStorage for persistence
+    const storeArmandSession = () => {
+      if (SessionManager.isArmandMorin()) {
+        console.log('Setting armandmorin session flag');
+        sessionStorage.setItem('is_armand_session', 'true');
+      }
+    };
+    
     // Initialize session management directly (no dynamic import)
     SessionManager.init().then(result => {
       console.log('Session initialized:', result);
+      storeArmandSession();
     }).catch(err => {
       console.error('Failed to initialize SessionManager:', err);
     });

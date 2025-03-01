@@ -146,6 +146,11 @@ export const SessionManager = {
   // Special function for armandmorin@gmail.com
   isArmandMorin: () => {
     try {
+      // First check session storage for persistent flag
+      if (sessionStorage.getItem('is_armand_session') === 'true') {
+        return true;
+      }
+      
       // Check if the user is armandmorin@gmail.com based on localStorage
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
