@@ -205,13 +205,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     );
     
-    // Add a safety timeout to ensure loading state is reset
+    // Add a safety timeout to ensure loading state is reset (shorter timeout)
     const safetyTimer = setTimeout(() => {
       if (loading) {
-        console.warn('Auth loading state was stuck for 5 seconds, forcing it to false');
+        console.warn('Auth loading state was stuck for 2 seconds, forcing it to false');
         setLoading(false);
       }
-    }, 5000);
+    }, 2000);
     
     // Check for active session immediately
     checkForActiveSession();
