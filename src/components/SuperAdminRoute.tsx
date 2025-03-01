@@ -10,15 +10,13 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // For direct debugging - check what's in localStorage
-  React.useEffect(() => {
-    console.log('SuperAdminRoute mounted at path:', location.pathname);
-    
-    // Check localStorage for auth token
-    const storageKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`;
-    const authData = localStorage.getItem(storageKey);
-    console.log('Auth data in localStorage:', authData ? 'exists (length: ' + authData.length + ')' : 'none');
-  }, [location.pathname]);
+  // Log path and check localStorage (no cleanup needed)
+  console.log('SuperAdminRoute mounted at path:', location.pathname);
+  
+  // Check localStorage for auth token
+  const storageKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`;
+  const authData = localStorage.getItem(storageKey);
+  console.log('Auth data in localStorage:', authData ? 'exists (length: ' + authData.length + ')' : 'none');
 
   // Force authentication state reset if taking too long
   React.useEffect(() => {
@@ -26,7 +24,13 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
     const safetyTimer = setTimeout(() => {
       if (loading) {
         console.warn('SuperAdminRoute: Loading stuck for 4 seconds, forcing reset');
-        window.dispatchEvent(new Event('auth:forceReset'));
+        // Create a custom event that can bubble through the DOM
+        const resetEvent = new CustomEvent('auth:forceReset', { 
+          bubbles: true, 
+          cancelable: true,
+          detail: { source: 'SuperAdminRoute' }
+        });
+        window.dispatchEvent(resetEvent);
       }
     }, 4000);
     
@@ -45,20 +49,30 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
 
   // Before redirecting, try to restore session directly to avoid unnecessary navigation
   React.useEffect(() => {
+    let isMounted = true;
+    
     if (user === null && !loading) {
-      // Get SessionManager and try one last session restore before redirecting
+      // Use a stable import reference
       const trySessionRestore = async () => {
         try {
-          const { SessionManager } = await import('../lib/supabase');
-          const restored = await SessionManager.restore();
-          console.log('Last-chance session restore result:', restored);
+          const module = await import('../lib/supabase');
+          if (isMounted) {
+            const result = await module.SessionManager.restore();
+            console.log('Last-chance session restore result:', result);
+          }
         } catch (err) {
-          console.error('Error in last-chance session restore:', err);
+          if (isMounted) {
+            console.error('Error in last-chance session restore:', err);
+          }
         }
       };
       
       trySessionRestore();
     }
+    
+    return () => {
+      isMounted = false;
+    };
   }, [user, loading]);
 
   // Only redirect if explicitly not logged in after loading completes and restore attempts

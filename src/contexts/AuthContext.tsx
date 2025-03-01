@@ -41,35 +41,51 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     console.log('Auth provider mounted - setting up authentication');
     
-    // Force Supabase to check localStorage and refresh auth state
-    const forceAuthRefresh = async () => {
-      try {
-        // Get the storage key
-        const PROJECT_ID = import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0];
-        const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
-        
-        // Check for stored session
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          console.log('Found stored session in localStorage');
-          
-          // Try to refresh the session
-          const { data, error } = await supabase.auth.refreshSession();
-          if (!error && data.session) {
-            console.log('Successfully refreshed session');
-          } else if (error) {
-            console.error('Failed to refresh session:', error);
-          }
-        } else {
-          console.log('No stored session found in localStorage');
-        }
-      } catch (err) {
-        console.error('Error checking stored auth:', err);
+    // Function to check localStorage for auth token
+  const checkStoredAuth = () => {
+    try {
+      // Get the storage key
+      const PROJECT_ID = import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0];
+      const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
+      
+      // Check for stored session
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        console.log('Found stored session in localStorage');
+        return true;
+      } else {
+        console.log('No stored session found in localStorage');
+        return false;
       }
-    };
+    } catch (err) {
+      console.error('Error checking stored auth:', err);
+      return false;
+    }
+  };
     
-    // Immediately try to refresh auth state
-    forceAuthRefresh();
+    // Check for stored auth
+    const hasStoredAuth = checkStoredAuth();
+    
+    // If we have stored auth, manually try to refresh the session
+    if (hasStoredAuth) {
+      // Create variable for cleanup
+      const refreshAborted = { aborted: false };
+      
+      // Non-async call to refresh the session
+      supabase.auth.refreshSession().then(({ data, error }) => {
+        if (refreshAborted.aborted) return;
+        
+        if (!error && data.session) {
+          console.log('Successfully refreshed session on mount');
+        } else if (error) {
+          console.error('Failed to refresh session on mount:', error);
+        }
+      }).catch(err => {
+        if (!refreshAborted.aborted) {
+          console.error('Unexpected error refreshing session:', err);
+        }
+      });
+    }
     
     // Function to fetch user profile data 
     const fetchUserProfile = async (userId: string): Promise<any> => {
@@ -245,14 +261,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const safetyTimer = setTimeout(() => {
       if (loading) {
         console.warn('Auth loading state was stuck for 5 seconds, forcing it to false');
-        setLoading(false);
+        // Use a functional update to prevent race conditions
+        setLoading(prevLoading => {
+          if (prevLoading) {
+            console.log('Safety timer: Resetting loading state');
+            return false;
+          }
+          return prevLoading;
+        });
       }
     }, 5000);
     
     // Listen for force reset events from other components
-    const handleForceReset = () => {
-      console.log('Received force reset event, resetting auth loading state');
-      setLoading(false);
+    const handleForceReset = (event: Event) => {
+      // Cast to CustomEvent to access detail property
+      const customEvent = event as CustomEvent;
+      console.log('Received force reset event, resetting auth loading state', 
+                 customEvent.detail ? `from ${customEvent.detail.source}` : '');
+      
+      // Use functional update to prevent race conditions
+      setLoading(prevLoading => {
+        if (prevLoading) {
+          console.log('Force reset: Changing loading state from true to false');
+          return false;
+        }
+        return prevLoading;
+      });
     };
     
     window.addEventListener('auth:forceReset', handleForceReset);
@@ -526,12 +560,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         console.log('Creating user with admin.createUser');
         try {
           // Use a direct API call to create user without signing in
+          const sessionData = await supabase.auth.getSession();
+          
+          // Check if we have a valid session with access token
+          if (!sessionData.data.session?.access_token) {
+            throw new Error('No valid session found to perform admin operation');
+          }
+          
           const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/admin/users`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-              'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+              'Authorization': `Bearer ${sessionData.data.session.access_token}`
             },
             body: JSON.stringify({
               email,
@@ -542,7 +583,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           });
           
           if (!response.ok) {
-            throw new Error(`Failed to create user: ${response.statusText}`);
+            const errorText = await response.text();
+            throw new Error(`Failed to create user: ${response.status} ${response.statusText} - ${errorText}`);
           }
           
           const createdUser = await response.json();
