@@ -39,8 +39,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Initialize user from Supabase session with simplified approach
   useEffect(() => {
-    // Process authenticated user data - simplified
+    console.log('Auth context useEffect running');
+    // Process authenticated user data with debugging
     const processAuthenticatedUser = async (userId: string, email: string) => {
+      console.log('Processing authenticated user on refresh/mount:', email);
+      
       // Get profile data for complete user info
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
@@ -48,9 +51,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .eq('id', userId)
         .single();
       
+      console.log('Profile from database:', profile);
+      
       // Get role from JWT if available
       const { data: session } = await supabase.auth.getSession();
       const roleFromJWT = session?.session?.user?.app_metadata?.role;
+      console.log('Role from JWT:', roleFromJWT);
 
       if (profile) {
         // Determine user role - prioritize JWT if available
@@ -58,29 +64,38 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
           userRole = 'superadmin';
+          console.log('User is a superadmin, setting role');
         } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
           userRole = 'admin';
+          console.log('User is an admin, setting role');
         }
         
-        // Set the user state
-        setUser({
+        const userData = {
           id: userId,
           email: email || '',
           name: profile.name || '',
           role: userRole,
           organization: profile.organization
-        });
+        };
+        
+        console.log('Setting user in context:', userData);
+        // Set the user state
+        setUser(userData);
       } else {
         // Create minimal user if no profile found
-        setUser({
+        const minimalUser = {
           id: userId,
           email: email || '',
           name: email?.split('@')[0] || 'User',
           role: roleFromJWT as UserRole || 'client',
           organization: null
-        });
+        };
+        
+        console.log('Setting minimal user in context:', minimalUser);
+        setUser(minimalUser);
       }
       
+      console.log('Setting loading to false');
       setLoading(false);
     };
     
@@ -97,14 +112,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(null);
           setLoading(false);
         } else if (event === 'TOKEN_REFRESHED') {
+          console.log('Token refreshed:', session?.user.email);
           if (session) {
-            // Only refresh user data if we don't already have the user
-            if (!user) {
-              await processAuthenticatedUser(
-                session.user.id,
-                session.user.email || ''
-              );
-            }
+            // Always refresh user data on token refresh
+            await processAuthenticatedUser(
+              session.user.id,
+              session.user.email || ''
+            );
           }
         } else if (event === 'INITIAL_SESSION') {
           if (session) {
@@ -119,15 +133,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     );
     
-    // Check for active session immediately with a timeout
+    // Check for active session with more debug information
     const checkSession = async () => {
       try {
+        console.log('Checking for active Supabase session');
         const { data, error } = await supabase.auth.getSession();
         
-        if (error || !data.session) {
+        if (error) {
+          console.error('Error getting Supabase session:', error);
           setLoading(false);
           return;
         }
+        
+        if (!data.session) {
+          console.log('No active Supabase session found');
+          setLoading(false);
+          return;
+        }
+        
+        console.log('Active session found for user:', data.session.user.email);
+        console.log('Session expires at:', new Date(data.session.expires_at! * 1000).toLocaleString());
         
         // Process the user data
         await processAuthenticatedUser(
@@ -151,7 +176,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       subscription.unsubscribe();
       clearTimeout(safetyTimer);
     };
-  }, [user]);
+  }, []); // Run only once when component mounts
 
   // Login function
   const login = async (email: string, password: string) => {
