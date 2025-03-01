@@ -90,6 +90,9 @@ const GlobalBranding: React.FC = () => {
           }
         }
         
+        // Refresh the session before making requests
+        await supabase.auth.refreshSession();
+        
         // Get branding settings from Supabase (even if we used cache)
         const { data, error } = await supabase
           .from('global_settings')

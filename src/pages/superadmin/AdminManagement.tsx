@@ -43,30 +43,61 @@ const AdminManagement: React.FC = () => {
     company: ''
   });
 
-  // Fetch admins from database
+  // Fetch admins from database with token refresh
   useEffect(() => {
     const fetchAdmins = async () => {
       try {
         setLoading(true);
+        
+        // First refresh the session to ensure we have a valid token
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          console.warn('Token refresh error before fetching admins:', refreshError);
+        }
+        
+        // Now fetch admins with the refreshed token
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('role', 'admin');
           
-        if (error) throw error;
-        
-        // Format data to match Admin interface
-        const formattedAdmins: Admin[] = data.map(profile => ({
-          id: profile.id,
-          name: profile.name || '',
-          email: profile.email || '',
-          company: profile.organization || '',
-          clients: 0, // This would come from a join or another query in a real app
-          status: 'active', // This would be determined by account status
-          joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
-        }));
-        
-        setAdmins(formattedAdmins);
+        if (error) {
+          // Try one more time if first attempt failed
+          console.warn('Error fetching admins, retrying:', error);
+          const { data: retryData, error: retryError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('role', 'admin');
+            
+          if (retryError) throw retryError;
+          if (!retryData) throw new Error('No data returned from retry');
+          
+          // Format data to match Admin interface
+          const formattedAdmins: Admin[] = retryData.map(profile => ({
+            id: profile.id,
+            name: profile.name || '',
+            email: profile.email || '',
+            company: profile.organization || '',
+            clients: 0,
+            status: 'active',
+            joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
+          }));
+          
+          setAdmins(formattedAdmins);
+        } else {
+          // Use data from first successful attempt
+          const formattedAdmins: Admin[] = data.map(profile => ({
+            id: profile.id,
+            name: profile.name || '',
+            email: profile.email || '',
+            company: profile.organization || '',
+            clients: 0,
+            status: 'active',
+            joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
+          }));
+          
+          setAdmins(formattedAdmins);
+        }
       } catch (err) {
         console.error('Error fetching admins:', err);
         setError('Failed to load admin accounts');
