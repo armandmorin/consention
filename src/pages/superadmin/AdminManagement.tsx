@@ -43,81 +43,50 @@ const AdminManagement: React.FC = () => {
     company: ''
   });
 
-  // Fetch admins from database with a dependency on user
+  // Simple fetch with dependency on auth user
   useEffect(() => {
     const fetchAdmins = async () => {
+      if (!auth.user) return;
+      
       try {
         setLoading(true);
         console.log('Fetching admin accounts...');
         
-        // First verify we have a valid session
-        const { data: sessionData } = await supabase.auth.getSession();
-        
-        if (!sessionData.session) {
-          console.error('No active session found when fetching admin data');
+        // Directly fetch admin profiles
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('role', 'admin');
+          
+        if (error) {
+          console.error('Error fetching admins:', error);
+          setError('Failed to load admin accounts');
           setLoading(false);
           return;
         }
         
-        // Use retry pattern for data fetching
-        let attempt = 0;
-        let maxAttempts = 3;
-        let success = false;
+        // Format data to match Admin interface
+        const formattedAdmins: Admin[] = data.map(profile => ({
+          id: profile.id,
+          name: profile.name || '',
+          email: profile.email || '',
+          company: profile.organization || '',
+          clients: 0, 
+          status: 'active',
+          joinedDate: profile.created_at ? new Date(profile.created_at).toISOString().split('T')[0] : '(unknown)'
+        }));
         
-        while (attempt < maxAttempts && !success) {
-          try {
-            // Fetch profiles from database
-            const { data, error } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('role', 'admin');
-              
-            if (error) {
-              console.warn(`Error fetching admins (attempt ${attempt + 1}/${maxAttempts}):`, error);
-              attempt++;
-              // Wait longer between each retry
-              await new Promise(resolve => setTimeout(resolve, 500 * attempt));
-              continue;
-            }
-            
-            // Format data to match Admin interface
-            const formattedAdmins: Admin[] = data.map(profile => ({
-              id: profile.id,
-              name: profile.name || '',
-              email: profile.email || '',
-              company: profile.organization || '',
-              clients: 0, 
-              status: 'active',
-              joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
-            }));
-            
-            console.log('Loaded admin accounts:', formattedAdmins.length);
-            setAdmins(formattedAdmins);
-            success = true;
-          } catch (err) {
-            console.error(`Fetch attempt ${attempt + 1}/${maxAttempts} failed:`, err);
-            attempt++;
-            // Wait between retries
-            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
-          }
-        }
-        
-        if (!success) {
-          setError('Failed to load admin accounts after multiple attempts');
-        }
+        console.log('Loaded admin accounts:', formattedAdmins.length);
+        setAdmins(formattedAdmins);
       } catch (err) {
-        console.error('Error in admin fetch process:', err);
+        console.error('Error fetching admins:', err);
         setError('Failed to load admin accounts');
       } finally {
         setLoading(false);
       }
     };
     
-    // Use the auth context's user object to determine when to fetch data
-    // This ensures we only fetch when we have a valid authenticated user
-    if (auth.user) {
-      fetchAdmins();
-    }
+    fetchAdmins();
   }, [auth.user]);
 
   const filteredAdmins = admins.filter(admin => 

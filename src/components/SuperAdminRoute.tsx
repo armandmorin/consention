@@ -6,13 +6,12 @@ interface SuperAdminRouteProps {
   children: React.ReactNode;
 }
 
-// Simplified SuperAdminRoute component
+// Basic SuperAdminRoute component - checks user role and redirects if needed
 const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
   
-  // While loading, render a simple loading indicator
-  // This prevents flashing of login screen during auth checks
+  // While authentication is being checked, show loading spinner
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-100">
@@ -21,14 +20,8 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
     );
   }
   
-  // After loading completes, we can be confident in the auth state
-  // If user is null, redirect to login
-  if (!user) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-  }
-  
-  // If user exists but doesn't have superadmin role, redirect to login
-  if (user.role !== 'superadmin') {
+  // If no user or not a superadmin, redirect to login
+  if (!user || user.role !== 'superadmin') {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
   

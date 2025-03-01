@@ -37,23 +37,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Initialize user from localStorage first, then validate with Supabase
+  // Simple session handling that relies on Supabase's built-in mechanisms
   useEffect(() => {
     // Process authenticated user data after validating with server
-    const processAuthenticatedUser = async (userId: string, email: string) => {
+    const processAuthenticatedUser = async (supabaseUser: SupabaseUser) => {
       try {
-        console.log('Processing authenticated user:', userId);
+        console.log('Processing authenticated user:', supabaseUser.id);
         
         // Get profile data for complete user info
         const { data: profile } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', userId)
+          .eq('id', supabaseUser.id)
           .single();
         
-        // Get role from JWT if available
-        const { data: session } = await supabase.auth.getSession();
-        const roleFromJWT = session?.session?.user?.app_metadata?.role;
+        // Get role from JWT claims
+        const roleFromJWT = supabaseUser.app_metadata?.role;
 
         if (profile) {
           // Determine user role - prioritize JWT if available
@@ -67,8 +66,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           
           // Set the user state
           setUser({
-            id: userId,
-            email: email || '',
+            id: supabaseUser.id,
+            email: supabaseUser.email || '',
             name: profile.name || '',
             role: userRole,
             organization: profile.organization
@@ -76,103 +75,69 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           // Create minimal user if no profile found
           setUser({
-            id: userId,
-            email: email || '',
-            name: email?.split('@')[0] || 'User',
+            id: supabaseUser.id,
+            email: supabaseUser.email || '',
+            name: supabaseUser.email?.split('@')[0] || 'User',
             role: roleFromJWT as UserRole || 'client',
             organization: null
           });
         }
-        
-        // Always finish by turning off loading
-        setLoading(false);
       } catch (err) {
         console.error('Error processing user data:', err);
-        // Make sure to reset loading state
+      } finally {
+        // Always finish by turning off loading
         setLoading(false);
       }
     };
     
-    // Set up auth state change listener
+    // Initial session check
+    const getInitialSession = async () => {
+      try {
+        // Start with loading state
+        setLoading(true);
+        
+        // Get the current session
+        const { data } = await supabase.auth.getSession();
+        
+        // If we have a session, process it
+        if (data.session) {
+          await processAuthenticatedUser(data.session.user);
+        } else {
+          // No active session
+          setUser(null);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error getting initial session:', err);
+        setLoading(false);
+      }
+    };
+    
+    // Run the initial session check
+    getInitialSession();
+    
+    // Set up auth state change listener for ongoing changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state change:', event);
         
-        if (event === 'SIGNED_IN' && session) {
-          setLoading(true);
-          await processAuthenticatedUser(
-            session.user.id,
-            session.user.email || ''
-          );
-        } else if (event === 'SIGNED_OUT') {
+        // Set loading true for any auth state change
+        setLoading(true);
+        
+        if (session) {
+          // We have a session, so process the user
+          await processAuthenticatedUser(session.user);
+        } else {
+          // No session, so user is logged out
           setUser(null);
           setLoading(false);
-        } else if (event === 'TOKEN_REFRESHED') {
-          if (session) {
-            setLoading(true);
-            await processAuthenticatedUser(
-              session.user.id,
-              session.user.email || ''
-            );
-          }
-        } else if (event === 'INITIAL_SESSION') {
-          if (session) {
-            setLoading(true);
-            await processAuthenticatedUser(
-              session.user.id,
-              session.user.email || ''
-            );
-          } else {
-            setLoading(false);
-          }
         }
       }
     );
     
-    // Simpler direct session check on mount
-    const checkSession = async () => {
-      try {
-        setLoading(true);
-        // Get session from Supabase
-        const { data, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error('Error getting session:', error);
-          setLoading(false);
-          return;
-        }
-        
-        // If we have a session, process the user data
-        if (data.session) {
-          await processAuthenticatedUser(
-            data.session.user.id,
-            data.session.user.email || ''
-          );
-        } else {
-          // No session found
-          setUser(null);
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error('Error checking session:', err);
-        setLoading(false);
-      }
-    };
-    
-    // Start by checking for an existing session
-    checkSession();
-    
-    // Add a safety timeout to ensure loading state resets
-    const safetyTimer = setTimeout(() => {
-      if (loading) {
-        console.log('Safety timeout triggered - resetting loading state');
-        setLoading(false);
-      }
-    }, 3000);
-    
+    // Cleanup function
     return () => {
       subscription.unsubscribe();
-      clearTimeout(safetyTimer);
     };
   }, []); // Empty dependency array ensures it only runs on mount
 
