@@ -12,8 +12,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import SuperAdminRoute from './components/SuperAdminRoute';
 
-// Import SessionManager directly to avoid dynamic imports in components
-import { SessionManager } from './lib/supabase';
+// Import supabase client directly
+import { supabase } from './lib/supabase';
 
 // Public pages
 import LandingPage from './pages/public/LandingPage';
@@ -43,37 +43,30 @@ function App() {
   useEffect(() => {
     console.log('App mounted, initializing...');
     
-    // Store special value for armandmorin@gmail.com in sessionStorage for persistence
-    const storeArmandSession = () => {
-      if (SessionManager.isArmandMorin()) {
-        console.log('Setting armandmorin session flag');
-        sessionStorage.setItem('is_armand_session', 'true');
-      }
-    };
-    
-    // Initialize session management directly (no dynamic import)
-    SessionManager.init().then(result => {
-      console.log('Session initialized:', result);
-      storeArmandSession();
-    }).catch(err => {
-      console.error('Failed to initialize SessionManager:', err);
-    });
+    // We don't need to store anything special for armandmorin@gmail.com now
+    // Our SuperAdminRoute handles this directly
     
     // Set up session restoration handlers with direct function references
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
         console.log('Document became visible, checking session...');
-        SessionManager.restore()
-          .then(result => console.log('Session restore result:', result))
-          .catch(err => console.error('Error restoring session:', err));
+        try {
+          const { data, error } = await supabase.auth.refreshSession();
+          console.log('Session refresh result:', !error && data.session ? 'success' : 'failed');
+        } catch (err) {
+          console.error('Error refreshing session:', err);
+        }
       }
     };
     
-    const handleFocus = () => {
+    const handleFocus = async () => {
       console.log('Window focused, checking session...');
-      SessionManager.restore()
-        .then(result => console.log('Session restore result:', result))
-        .catch(err => console.error('Error restoring session:', err));
+      try {
+        const { data, error } = await supabase.auth.refreshSession();
+        console.log('Session refresh result:', !error && data.session ? 'success' : 'failed');
+      } catch (err) {
+        console.error('Error refreshing session:', err);
+      }
     };
     
     // Add event listeners
