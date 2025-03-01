@@ -37,13 +37,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Initialize user from Supabase session with simplified approach
+  // Very simple initialization of user from Supabase session
   useEffect(() => {
-    console.log('Auth context useEffect running');
-    // Process authenticated user data with debugging
+    // Process authenticated user data without special cases
     const processAuthenticatedUser = async (userId: string, email: string) => {
-      console.log('Processing authenticated user on refresh/mount:', email);
-      
       // Get profile data for complete user info
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
@@ -51,12 +48,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .eq('id', userId)
         .single();
       
-      console.log('Profile from database:', profile);
-      
       // Get role from JWT if available
       const { data: session } = await supabase.auth.getSession();
       const roleFromJWT = session?.session?.user?.app_metadata?.role;
-      console.log('Role from JWT:', roleFromJWT);
 
       if (profile) {
         // Determine user role - prioritize JWT if available
@@ -64,38 +58,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
           userRole = 'superadmin';
-          console.log('User is a superadmin, setting role');
         } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
           userRole = 'admin';
-          console.log('User is an admin, setting role');
         }
         
-        const userData = {
+        // Set the user state
+        setUser({
           id: userId,
           email: email || '',
           name: profile.name || '',
           role: userRole,
           organization: profile.organization
-        };
-        
-        console.log('Setting user in context:', userData);
-        // Set the user state
-        setUser(userData);
+        });
       } else {
         // Create minimal user if no profile found
-        const minimalUser = {
+        setUser({
           id: userId,
           email: email || '',
           name: email?.split('@')[0] || 'User',
           role: roleFromJWT as UserRole || 'client',
           organization: null
-        };
-        
-        console.log('Setting minimal user in context:', minimalUser);
-        setUser(minimalUser);
+        });
       }
       
-      console.log('Setting loading to false');
       setLoading(false);
     };
     
@@ -133,26 +118,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     );
     
-    // Check for active session with more debug information
+    // Simple session check without extra complexity
     const checkSession = async () => {
       try {
-        console.log('Checking for active Supabase session');
+        // Get current session from Supabase
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Error getting Supabase session:', error);
           setLoading(false);
           return;
         }
         
         if (!data.session) {
-          console.log('No active Supabase session found');
           setLoading(false);
           return;
         }
-        
-        console.log('Active session found for user:', data.session.user.email);
-        console.log('Session expires at:', new Date(data.session.expires_at! * 1000).toLocaleString());
         
         // Process the user data
         await processAuthenticatedUser(
@@ -176,7 +156,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       subscription.unsubscribe();
       clearTimeout(safetyTimer);
     };
-  }, []); // Run only once when component mounts
+  }, []); // Empty dependency array ensures it only runs on mount
 
   // Login function
   const login = async (email: string, password: string) => {

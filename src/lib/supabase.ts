@@ -14,17 +14,16 @@ const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
 // Log the storage key for debugging
 console.log('Supabase storage key:', STORAGE_KEY);
 
-// Create the Supabase client with standard configuration
+// Create the Supabase client with simple standard configuration
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     storageKey: STORAGE_KEY,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
   }
 })
 
-// Standard session check with error handling
+// Simple session check without any special handling
 export const hasValidSession = async (): Promise<boolean> => {
   try {
     const { data, error } = await supabase.auth.getSession()
