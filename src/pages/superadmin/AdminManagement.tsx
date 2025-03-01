@@ -43,27 +43,25 @@ const AdminManagement: React.FC = () => {
     company: ''
   });
 
-  // Fetch admins from database with token refresh
+  // Fetch admins from database with a dependency on user
   useEffect(() => {
     const fetchAdmins = async () => {
       try {
         setLoading(true);
+        console.log('Fetching admin accounts...');
         
-        // First refresh the session to ensure we have a valid token
-        const { error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError) {
-          console.warn('Token refresh error before fetching admins:', refreshError);
-        }
-        
-        // Now fetch admins with the refreshed token
+        // Just use standard session - no refresh needed on first load
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('role', 'admin');
           
         if (error) {
-          // Try one more time if first attempt failed
-          console.warn('Error fetching admins, retrying:', error);
+          console.warn('Error fetching admins, will retry once:', error);
+          
+          // Wait a moment and retry
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
           const { data: retryData, error: retryError } = await supabase
             .from('profiles')
             .select('*')
@@ -83,6 +81,7 @@ const AdminManagement: React.FC = () => {
             joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
           }));
           
+          console.log('Loaded admin accounts from retry:', formattedAdmins.length);
           setAdmins(formattedAdmins);
         } else {
           // Use data from first successful attempt
@@ -96,6 +95,7 @@ const AdminManagement: React.FC = () => {
             joinedDate: new Date(profile.created_at).toISOString().split('T')[0]
           }));
           
+          console.log('Loaded admin accounts:', formattedAdmins.length);
           setAdmins(formattedAdmins);
         }
       } catch (err) {
@@ -106,8 +106,11 @@ const AdminManagement: React.FC = () => {
       }
     };
     
-    fetchAdmins();
-  }, []);
+    // Only fetch data if we have signup function available (which means we're authenticated)
+    if (signup) {
+      fetchAdmins();
+    }
+  }, [signup]);
 
   const filteredAdmins = admins.filter(admin => 
     admin.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -50,7 +50,7 @@ const GlobalBranding: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  // Load branding settings from Supabase and apply them when component mounts
+  // Load branding settings from Supabase and apply them when user is available
   useEffect(() => {
     // Safety mechanism to clear loading state if it gets stuck
     const safetyTimer = setTimeout(() => {
@@ -60,9 +60,15 @@ const GlobalBranding: React.FC = () => {
       }
     }, 3000);
     
+    // Only run this effect when we have a user
+    if (!user) {
+      console.log("No user available yet for branding settings");
+      return;
+    }
+    
     // Start loading the branding settings from Supabase
     const loadBrandingSettings = async () => {
-      console.log("Loading branding settings from Supabase");
+      console.log("Loading branding settings from Supabase for user:", user.email);
       setLoading(true);
       setError('');
       
@@ -89,9 +95,6 @@ const GlobalBranding: React.FC = () => {
             console.error('Error parsing cached settings:', cacheErr);
           }
         }
-        
-        // Refresh the session before making requests
-        await supabase.auth.refreshSession();
         
         // Get branding settings from Supabase (even if we used cache)
         const { data, error } = await supabase
@@ -193,14 +196,14 @@ const GlobalBranding: React.FC = () => {
       }
     };
     
-    // Load settings when the component mounts
+    // Load settings now that we have a user
     loadBrandingSettings();
     
     // Clean up timer on unmount
     return () => {
       clearTimeout(safetyTimer);
     };
-  }, []);
+  }, [user]);
   
   // Apply branding settings whenever they change
   useEffect(() => {
