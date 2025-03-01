@@ -19,27 +19,38 @@ const Login: React.FC = () => {
   
   // Handle redirections and cleanup on component mount
   useEffect(() => {
+    let isMounted = true;
     console.log('Login page loaded, checking auth state');
     
     // Redirect authenticated users
     const redirectIfLoggedIn = () => {
-      if (user) {
+      if (user && isMounted) {
         console.log(`User already logged in as ${user.role}, redirecting...`);
-        if (user.role === 'superadmin') {
-          navigate('/superadmin');
-        } else if (user.role === 'admin') {
-          navigate('/admin');
-        } else if (user.role === 'client') {
-          navigate('/client');
-        }
+        // Use a microtask to ensure we don't redirect during render
+        Promise.resolve().then(() => {
+          if (!isMounted) return;
+          
+          if (user.role === 'superadmin') {
+            navigate('/superadmin');
+          } else if (user.role === 'admin') {
+            navigate('/admin');
+          } else if (user.role === 'client') {
+            navigate('/client');
+          }
+        });
       }
     };
     
     // Add a safety timeout to ensure auth loading is reset
     const safetyTimer = setTimeout(() => {
-      if (loading) {
+      if (loading && isMounted) {
         console.warn('Login page: Auth loading state was stuck, forcing reset');
-        window.dispatchEvent(new Event('auth:forceReset'));
+        const resetEvent = new CustomEvent('auth:forceReset', {
+          bubbles: true,
+          cancelable: true,
+          detail: { source: 'LoginPage', timestamp: Date.now() }
+        });
+        window.dispatchEvent(resetEvent);
       }
     }, 3000);
     
@@ -47,6 +58,7 @@ const Login: React.FC = () => {
     redirectIfLoggedIn();
     
     return () => {
+      isMounted = false;
       clearTimeout(safetyTimer);
       console.log('Login page unmounted');
     };

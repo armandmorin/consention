@@ -75,15 +75,46 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
     };
   }, [user, loading]);
 
-  // Only redirect if explicitly not logged in after loading completes and restore attempts
-  if (user === null && !loading) {
-    console.log('No user found in SuperAdminRoute, redirecting to login');
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-  }
-
-  if (user && user.role !== 'superadmin') {
-    console.log('User does not have superadmin privileges, redirecting to home');
-    return <Navigate to="/" replace />;
+  // Use an effect for redirects to avoid React errors during render
+  React.useEffect(() => {
+    let isMounted = true;
+    
+    // Only redirect if explicitly not logged in after loading completes
+    if (user === null && !loading) {
+      console.log('No user found in SuperAdminRoute, redirecting to login');
+      Promise.resolve().then(() => {
+        if (isMounted) {
+          // Use navigate instead of returning Navigate component
+          window.location.href = `/login?from=${encodeURIComponent(location.pathname)}`;
+        }
+      });
+    }
+    
+    // Check for non-superadmin users
+    if (user && user.role !== 'superadmin') {
+      console.log('User does not have superadmin privileges, redirecting to home');
+      Promise.resolve().then(() => {
+        if (isMounted) {
+          window.location.href = '/';
+        }
+      });
+    }
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [user, loading, location.pathname]);
+  
+  // Only render children if user is authenticated as superadmin
+  if ((user === null && !loading) || (user && user.role !== 'superadmin')) {
+    // Return loading UI instead of redirect components
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <p className="text-lg text-gray-700">Checking permissions...</p>
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;

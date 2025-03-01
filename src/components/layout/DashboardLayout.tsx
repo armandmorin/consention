@@ -28,11 +28,22 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   
   // Check authentication status and redirect to login if needed
   useEffect(() => {
+    let isMounted = true;
+    
     // Only redirect if explicitly not logged in (not during initial loading)
     if (!loading && user === null) {
       console.log('No user detected in DashboardLayout, redirecting to login');
-      navigate('/login');
+      // Use a microtask to ensure we don't redirect during render
+      Promise.resolve().then(() => {
+        if (isMounted) {
+          navigate('/login');
+        }
+      });
     }
+    
+    return () => {
+      isMounted = false;
+    };
   }, [user, loading, navigate]);
   
   // Determine user type from URL
@@ -79,27 +90,54 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, title }) =>
   
   // Set up a timer to detect stuck loading state
   useEffect(() => {
+    let isMounted = true;
+    
     if (loading) {
       const stuckTimer = setTimeout(() => {
-        console.warn("DashboardLayout loading state appears stuck, forcing a manual refresh option");
-        setStuckLoading(true);
+        if (isMounted) {
+          console.warn("DashboardLayout loading state appears stuck, forcing a manual refresh option");
+          setStuckLoading(true);
+        }
       }, 4000); // Reduced from 8 to 4 seconds to detect issues faster
       
-      return () => clearTimeout(stuckTimer);
+      return () => {
+        isMounted = false;
+        clearTimeout(stuckTimer);
+      };
     }
+    
+    return () => {
+      isMounted = false;
+    };
   }, [loading]);
   
   // Force loading state to false if it gets stuck for too long
   useEffect(() => {
+    let isMounted = true;
+    
     if (loading) {
       const forceResetTimer = setTimeout(() => {
-        console.warn("DashboardLayout loading state was stuck for too long, forcing it to false");
-        // This hack helps recover from stuck auth states
-        window.dispatchEvent(new CustomEvent('auth:forceReset'));
+        if (isMounted) {
+          console.warn("DashboardLayout loading state was stuck for too long, forcing it to false");
+          // Use CustomEvent with more detail for debugging
+          const resetEvent = new CustomEvent('auth:forceReset', {
+            bubbles: true,
+            cancelable: true,
+            detail: { source: 'DashboardLayout', timestamp: Date.now() }
+          });
+          window.dispatchEvent(resetEvent);
+        }
       }, 6000); // Force state reset after 6 seconds
       
-      return () => clearTimeout(forceResetTimer);
+      return () => {
+        isMounted = false;
+        clearTimeout(forceResetTimer);
+      };
     }
+    
+    return () => {
+      isMounted = false;
+    };
   }, [loading]);
   
   // Show loading state
