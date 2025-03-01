@@ -41,27 +41,53 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     console.log('Auth provider mounted - setting up authentication');
     
-    // Function to check localStorage for auth token
-  const checkStoredAuth = () => {
-    try {
-      // Get the storage key
-      const PROJECT_ID = import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0];
-      const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
+    // Handle manual profile updates from the SessionManager's direct checks
+    const handleManualProfileUpdate = (event: CustomEvent) => {
+      const profileData = event.detail;
+      console.log('Received manual profile update:', profileData);
       
-      // Check for stored session
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        console.log('Found stored session in localStorage');
-        return true;
-      } else {
-        console.log('No stored session found in localStorage');
+      if (profileData && profileData.role === 'superadmin') {
+        console.log('Setting superadmin override from manual update');
+        
+        // Create a complete user object from the profile data
+        const manualUser: User = {
+          id: profileData.id,
+          email: profileData.email || '',
+          name: profileData.profile?.name || profileData.email?.split('@')[0] || 'Admin',
+          role: 'superadmin',
+          organization: profileData.profile?.organization
+        };
+        
+        // Set user directly in auth context
+        setUser(manualUser);
+        setLoading(false);
+      }
+    };
+    
+    // Add listener for manual profile updates
+    window.addEventListener('auth:manualProfileUpdate', handleManualProfileUpdate as EventListener);
+    
+    // Function to check localStorage for auth token
+    const checkStoredAuth = () => {
+      try {
+        // Get the storage key
+        const PROJECT_ID = import.meta.env.VITE_SUPABASE_URL.split('//')[1].split('.')[0];
+        const STORAGE_KEY = `sb-${PROJECT_ID}-auth-token`;
+        
+        // Check for stored session
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          console.log('Found stored session in localStorage');
+          return true;
+        } else {
+          console.log('No stored session found in localStorage');
+          return false;
+        }
+      } catch (err) {
+        console.error('Error checking stored auth:', err);
         return false;
       }
-    } catch (err) {
-      console.error('Error checking stored auth:', err);
-      return false;
-    }
-  };
+    };
     
     // Check for stored auth
     const hasStoredAuth = checkStoredAuth();
@@ -309,6 +335,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       subscription.unsubscribe();
       clearTimeout(safetyTimer);
       window.removeEventListener('auth:forceReset', handleForceReset);
+      window.removeEventListener('auth:manualProfileUpdate', handleManualProfileUpdate as EventListener);
     };
   }, []);
 

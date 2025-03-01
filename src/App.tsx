@@ -115,8 +115,8 @@ function App() {
   
   return (
     <Router>
-      {/* Remove the key prop - this was causing components to unmount and remount */}
-      <AuthProvider>
+      {/* Add key={window.location.pathname} to force reload on first render in protected areas */}
+      <AuthProvider key={window.location.pathname.startsWith('/superadmin') ? 'force-reload' : 'default'}>
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<LandingPage />} />

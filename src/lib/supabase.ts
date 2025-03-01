@@ -1,5 +1,21 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
+// Add global type declaration for our temporary override
+declare global {
+  interface Window {
+    __supabaseAuthInitialized?: boolean;
+    __supabaseAuthChecking?: boolean;
+    __supabaseAuthSuccess?: boolean;
+    __temporarySuperAdminOverride?: {
+      id: string;
+      email: string;
+      role: string;
+      name: string;
+      organization?: string;
+    };
+  }
+}
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
@@ -330,18 +346,75 @@ export const SessionManager = {
       // Get the user's profile to check role
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, name, email, organization')
         .eq('id', userData.user.id)
         .single();
       
       if (profileError) {
         console.error('Error fetching profile in superadmin check:', profileError);
+        
+        // IMPORTANT: Try one more fallback with direct SQL query
+        try {
+          console.log('Attempting superadmin check with direct query...');
+          
+          // This special query should bypass RLS
+          const { data: directData, error: directError } = await supabase.rpc('is_user_superadmin', {
+            user_id: userData.user.id
+          });
+          
+          if (!directError && directData === true) {
+            console.log('Direct RPC confirms user is superadmin');
+            
+            // Create a proper user session with correct role
+            // Update auth context manually
+            window.__temporarySuperAdminOverride = {
+              id: userData.user.id,
+              email: userData.user.email || '',
+              role: 'superadmin',
+              name: userData.user.email?.split('@')[0] || 'Admin',
+            };
+            
+            // Broadcast an event for the auth context
+            window.dispatchEvent(new CustomEvent('auth:manualProfileUpdate', {
+              detail: {
+                id: userData.user.id,
+                email: userData.user.email,
+                role: 'superadmin'
+              }
+            }));
+            
+            return true;
+          }
+        } catch (rpcError) {
+          console.error('RPC error:', rpcError);
+        }
+        
         return false;
       }
       
       // Verify superadmin role
       if (profile && profile.role === 'superadmin') {
         console.log('Direct check confirms user is superadmin');
+        
+        // Update auth context manually
+        window.__temporarySuperAdminOverride = {
+          id: userData.user.id,
+          email: userData.user.email || '',
+          role: 'superadmin',
+          name: profile.name || userData.user.email?.split('@')[0] || 'Admin',
+          organization: profile.organization
+        };
+        
+        // Broadcast an event for the auth context
+        window.dispatchEvent(new CustomEvent('auth:manualProfileUpdate', {
+          detail: {
+            id: userData.user.id,
+            email: userData.user.email,
+            role: 'superadmin',
+            profile: profile
+          }
+        }));
+        
         return true;
       } else {
         console.log('User is not a superadmin:', profile?.role);
