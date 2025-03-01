@@ -119,28 +119,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     );
     
-    // Check for active session immediately
+    // Check for active session immediately with a timeout
     const checkSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      
-      if (error || !data.session) {
-        setLoading(false);
-        return;
-      }
-      
-      // Only process if we haven't already
-      if (!user) {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error || !data.session) {
+          setLoading(false);
+          return;
+        }
+        
+        // Process the user data
         await processAuthenticatedUser(
           data.session.user.id,
           data.session.user.email || ''
         );
+      } catch (err) {
+        console.error('Error checking session:', err);
+        setLoading(false);
       }
     };
+    
+    // Add a safety timeout to ensure loading state resets
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
     
     checkSession();
     
     return () => {
       subscription.unsubscribe();
+      clearTimeout(safetyTimer);
     };
   }, [user]);
 
