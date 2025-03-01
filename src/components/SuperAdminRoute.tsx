@@ -1,15 +1,19 @@
 import React, { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { SessionManager } from '../lib/supabase';
 
 interface SuperAdminRouteProps {
   children: ReactNode;
 }
 
-// Simple, clean implementation now that the database properly syncs roles
+// Implementation with special bypass for armandmorin@gmail.com
 const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
+  
+  // Special check for armandmorin@gmail.com
+  const isArmand = SessionManager.isArmandMorin();
   
   // Show loading spinner while auth state is being determined
   if (loading) {
@@ -21,12 +25,26 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
     );
   }
   
-  // Allow access if the user is a superadmin
+  // Allow access if the user is a superadmin from auth context
   if (user && user.role === 'superadmin') {
+    console.log('SuperAdminRoute: Access granted via auth context');
     return <>{children}</>;
   }
   
-  // Otherwise redirect to login
+  // Special bypass for armandmorin@gmail.com
+  if (isArmand) {
+    console.log('SuperAdminRoute: Special access granted for armandmorin@gmail.com');
+    return <>{children}</>;
+  }
+  
+  // Check if a user exists but doesn't have proper role
+  if (user && user.role !== 'superadmin') {
+    console.log('SuperAdminRoute: Access denied - user exists but is not superadmin');
+    return <Navigate to="/" replace />;
+  }
+  
+  // No authenticated user, redirect to login
+  console.log('SuperAdminRoute: No authenticated user, redirecting to login');
   return <Navigate to="/login" state={{ from: location.pathname }} replace />;
 };
 
