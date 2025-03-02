@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { PlusCircle, Edit, Trash2, Search, X, Code } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Search, X, Code, Mail, User, CheckCircle } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Client {
   id: string;
@@ -12,11 +13,49 @@ interface Client {
   createdAt: string;
 }
 
+interface ClientFormData {
+  companyName: string;
+  website: string;
+  status: 'active' | 'inactive';
+  contactName: string;
+  contactEmail: string;
+  createAccount: boolean;
+  sendInvite: boolean;
+}
+
 const ClientManagement: React.FC = () => {
+  const { signup } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  
+  // Form data for new client
+  const [formData, setFormData] = useState<ClientFormData>({
+    companyName: '',
+    website: '',
+    status: 'active',
+    contactName: '',
+    contactEmail: '',
+    createAccount: true,
+    sendInvite: true
+  });
+  
+  // Handle form input changes
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    
+    // Handle checkboxes
+    if (type === 'checkbox') {
+      const checked = (e.target as HTMLInputElement).checked;
+      setFormData({ ...formData, [name]: checked });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
+  };
 
   // Mock data for clients
   const clients: Client[] = [
@@ -33,9 +72,80 @@ const ClientManagement: React.FC = () => {
     client.website.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleAddClient = () => {
-    // Handle adding client logic
-    setShowAddModal(false);
+  const handleAddClient = async () => {
+    try {
+      setIsSubmitting(true);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      
+      // Validate form
+      if (!formData.companyName || !formData.website) {
+        setErrorMessage('Company name and website are required');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (formData.createAccount && (!formData.contactEmail || !formData.contactName)) {
+        setErrorMessage('Contact name and email are required when creating an account');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // In production, you would:
+      // 1. Create the client record in your database
+      // 2. If createAccount is true, create a user account
+      
+      console.log('Creating client:', formData.companyName);
+      
+      // If user account creation is selected
+      if (formData.createAccount) {
+        console.log('Creating user account for client contact:', formData.contactEmail);
+        
+        // Create client user via our signup method
+        const result = await signup(
+          formData.contactEmail,
+          formData.contactName,
+          'client', // Always 'client' role for clients
+          formData.companyName
+        );
+        
+        if (!result || !result.success) {
+          throw new Error(result?.error || 'Failed to create client account');
+        }
+        
+        // If you enabled the "send invite" option
+        if (formData.sendInvite) {
+          console.log('An invite would be sent to:', formData.contactEmail);
+          // In production, you would trigger an email invitation here
+        }
+      }
+      
+      // Show success message
+      setSuccessMessage('Client created successfully!');
+      
+      // Reset form
+      setFormData({
+        companyName: '',
+        website: '',
+        status: 'active',
+        contactName: '',
+        contactEmail: '',
+        createAccount: true,
+        sendInvite: true
+      });
+      
+      // Close modal after a short delay to show success message
+      setTimeout(() => {
+        setShowAddModal(false);
+        setSuccessMessage(null);
+      }, 2000);
+      
+    } catch (err) {
+      console.error('Error creating client:', err);
+      setErrorMessage(err instanceof Error ? err.message : 'An error occurred creating the client');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeleteClient = () => {
@@ -189,18 +299,48 @@ const ClientManagement: React.FC = () => {
                     <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
                       Add New Client
                     </h3>
+                    
+                    {errorMessage && (
+                      <div className="mt-2 rounded-md bg-red-50 p-3">
+                        <div className="flex">
+                          <div className="flex-shrink-0">
+                            <X className="h-5 w-5 text-red-400" />
+                          </div>
+                          <div className="ml-3">
+                            <p className="text-sm font-medium text-red-800">{errorMessage}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {successMessage && (
+                      <div className="mt-2 rounded-md bg-green-50 p-3">
+                        <div className="flex">
+                          <div className="flex-shrink-0">
+                            <CheckCircle className="h-5 w-5 text-green-400" />
+                          </div>
+                          <div className="ml-3">
+                            <p className="text-sm font-medium text-green-800">{successMessage}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="mt-4 space-y-4">
                       <div>
-                        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                          Client Name
+                        <label htmlFor="companyName" className="block text-sm font-medium text-gray-700">
+                          Company Name
                         </label>
                         <input
                           type="text"
-                          name="name"
-                          id="name"
+                          name="companyName"
+                          id="companyName"
+                          value={formData.companyName}
+                          onChange={handleInputChange}
                           className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                         />
                       </div>
+                      
                       <div>
                         <label htmlFor="website" className="block text-sm font-medium text-gray-700">
                           Website
@@ -209,9 +349,12 @@ const ClientManagement: React.FC = () => {
                           type="text"
                           name="website"
                           id="website"
+                          value={formData.website}
+                          onChange={handleInputChange}
                           className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                         />
                       </div>
+                      
                       <div>
                         <label htmlFor="status" className="block text-sm font-medium text-gray-700">
                           Status
@@ -219,11 +362,91 @@ const ClientManagement: React.FC = () => {
                         <select
                           id="status"
                           name="status"
+                          value={formData.status}
+                          onChange={handleInputChange}
                           className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
                         >
                           <option value="active">Active</option>
                           <option value="inactive">Inactive</option>
                         </select>
+                      </div>
+                      
+                      <div className="my-4 border-t border-gray-200 pt-4">
+                        <h4 className="text-md font-medium text-gray-900 mb-3">Contact Information & User Account</h4>
+                        
+                        <div className="flex items-center mb-4">
+                          <input
+                            id="createAccount"
+                            name="createAccount"
+                            type="checkbox"
+                            checked={formData.createAccount}
+                            onChange={handleInputChange}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                          <label htmlFor="createAccount" className="ml-2 block text-sm text-gray-900">
+                            Create user account for client contact
+                          </label>
+                        </div>
+                        
+                        {formData.createAccount && (
+                          <>
+                            <div className="mt-3">
+                              <label htmlFor="contactName" className="block text-sm font-medium text-gray-700">
+                                Contact Name
+                              </label>
+                              <div className="mt-1 relative rounded-md shadow-sm">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                  <User className="h-5 w-5 text-gray-400" />
+                                </div>
+                                <input
+                                  id="contactName"
+                                  name="contactName"
+                                  type="text"
+                                  value={formData.contactName}
+                                  onChange={handleInputChange}
+                                  className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md"
+                                />
+                              </div>
+                            </div>
+                            
+                            <div className="mt-3">
+                              <label htmlFor="contactEmail" className="block text-sm font-medium text-gray-700">
+                                Contact Email
+                              </label>
+                              <div className="mt-1 relative rounded-md shadow-sm">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                  <Mail className="h-5 w-5 text-gray-400" />
+                                </div>
+                                <input
+                                  id="contactEmail"
+                                  name="contactEmail"
+                                  type="email"
+                                  value={formData.contactEmail}
+                                  onChange={handleInputChange}
+                                  className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md"
+                                />
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center mt-3">
+                              <input
+                                id="sendInvite"
+                                name="sendInvite"
+                                type="checkbox"
+                                checked={formData.sendInvite}
+                                onChange={handleInputChange}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <label htmlFor="sendInvite" className="ml-2 block text-sm text-gray-900">
+                                Send invitation email
+                              </label>
+                            </div>
+                            
+                            <p className="mt-2 text-xs text-gray-500">
+                              An email will be sent to the contact with instructions to set up their account.
+                            </p>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -232,15 +455,33 @@ const ClientManagement: React.FC = () => {
               <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                 <button
                   type="button"
-                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm"
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                   onClick={handleAddClient}
+                  disabled={isSubmitting}
                 >
-                  Add Client
+                  {isSubmitting ? 'Creating...' : 'Add Client'}
                 </button>
                 <button
                   type="button"
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => {
+                    if (!isSubmitting) {
+                      setShowAddModal(false);
+                      setErrorMessage(null);
+                      setSuccessMessage(null);
+                      // Reset form
+                      setFormData({
+                        companyName: '',
+                        website: '',
+                        status: 'active',
+                        contactName: '',
+                        contactEmail: '',
+                        createAccount: true,
+                        sendInvite: true
+                      });
+                    }
+                  }}
+                  disabled={isSubmitting}
                 >
                   Cancel
                 </button>

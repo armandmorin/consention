@@ -7,9 +7,10 @@ export const clerkConfig = {
   signInUrl: '/login',
   signUpUrl: '/admin/signup',
   
-  // After sign in/up, Clerk will redirect to this URL by default
-  afterSignInUrl: '/dashboard',
-  afterSignUpUrl: '/dashboard',
+  // After sign in/up, Clerk will redirect to these URLs by default
+  // We'll handle more specific redirects in our auth context
+  afterSignInUrl: '/login',  // We'll redirect from here based on role
+  afterSignUpUrl: '/login',  // We'll redirect from here based on role
   
   // Will try to redirect users when they sign out
   navigateAfterSignOut: '/login',

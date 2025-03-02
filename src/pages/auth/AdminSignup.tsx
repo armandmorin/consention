@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Shield, AlertCircle, CheckCircle } from 'lucide-react';
-import axios from 'axios';
-import { API_URL } from '../../config/constants';
+import { useAuth } from '../../contexts/AuthContext';
 
 const AdminSignup: React.FC = () => {
   const [name, setName] = useState('');
@@ -11,10 +10,12 @@ const AdminSignup: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [website, setWebsite] = useState('');
+  const [signupCode, setSignupCode] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { signup } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,21 +29,33 @@ const AdminSignup: React.FC = () => {
     }
 
     try {
-      await axios.post(`${API_URL}/api/auth/signup`, {
-        name,
-        email,
-        password,
-        companyName,
-        website,
-        role: 'admin'
-      });
+      // Determine role based on signup code
+      let role: 'admin' | 'superadmin';
+      
+      // These should be environment variables in a real app
+      if (signupCode === 'SUPER-SECRET-123') {
+        role = 'superadmin';
+      } else if (signupCode === 'ADMIN-SECRET-456') {
+        role = 'admin';
+      } else {
+        setError('Invalid signup code. Please contact system administrator.');
+        setLoading(false);
+        return;
+      }
+      
+      // Use our Auth context's signup function
+      const result = await signup(email, name, role, companyName);
+      
+      if (!result || !result.success) {
+        throw new Error(result?.error || 'Failed to create account');
+      }
       
       setSuccess(true);
       setTimeout(() => {
         navigate('/login');
       }, 3000);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to create account');
+      setError(err.message || 'Failed to create account');
     } finally {
       setLoading(false);
     }
@@ -174,6 +187,26 @@ const AdminSignup: React.FC = () => {
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 />
               </div>
+            </div>
+
+            <div>
+              <label htmlFor="signupCode" className="block text-sm font-medium text-gray-700">
+                Admin Signup Code
+              </label>
+              <div className="mt-1">
+                <input
+                  id="signupCode"
+                  name="signupCode"
+                  type="text"
+                  required
+                  value={signupCode}
+                  onChange={(e) => setSignupCode(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Use <code>ADMIN-SECRET-456</code> for admin or <code>SUPER-SECRET-123</code> for superadmin access
+              </p>
             </div>
 
             <div>

@@ -155,37 +155,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signup = async (email: string, name: string, role: UserRole, organization?: string) => {
     setError(null);
     
-    // Are we an admin creating another user?
-    const isAdminCreatingUser = user?.role === 'admin' || user?.role === 'superadmin';
-    
     try {
-      // For admins creating users, we use a different flow
-      if (isAdminCreatingUser) {
-        // We would use Clerk's backend API via a server endpoint to create users
-        // For now, just log the intent and create a profile in Supabase
-        console.log('Admin creating user:', { email, name, role, organization });
-        
-        // We need a different approach here as well
-        // For admin-created users, we'd typically need a backend endpoint
-        // that handles both Clerk user creation and Supabase profile creation
-        
-        // For now, just log what we would do
-        console.log("To create a new user, we need to:", {
-          action1: "Create user in Clerk via Admin API",
-          action2: "Create corresponding Supabase Auth user",
-          action3: "Create profile record linked to that user",
-          userData: { email, name, role, organization }
-        });
-          
-        // Since we're not actually doing the profile creation here, 
-        // we won't have profileError
-        
-        return { success: true };
-      } else {
-        // For self-signup, redirect to Clerk signup
-        clerk.openSignUp();
-        return { success: true };
+      // For admin/superadmin signup, we'd need to create the user and assign roles
+      // In a production environment, we'd use a backend API for this
+      
+      // For demo purposes, show that we're handling special role signups
+      console.log('Creating new user with role:', { email, name, role, organization });
+      
+      // The proper approach would be:
+      // 1. Use Clerk's Admin API to create a user
+      // 2. Assign them the correct role in Clerk metadata
+      // 3. Create a corresponding user in Supabase Auth
+      // 4. Create a profile record with the proper role
+      
+      // For now, just open Clerk's signup form
+      // In a real implementation, you would use an invite system
+      // or a backend endpoint that creates users with the proper role
+      clerk.openSignUp({
+        redirectUrl: '/login',
+        unsafeMetadata: {
+          // This will be stored in clerk but won't be automatically used
+          // by our authentication system since we need to sync with Supabase
+          requestedRole: role,
+          organization: organization || ''
+        }
+      });
+      
+      // Let the admin know that further steps will be needed
+      if (role === 'admin' || role === 'superadmin') {
+        console.log('IMPORTANT: After signup, an admin will need to:');
+        console.log('1. Check for this new user in Clerk dashboard');
+        console.log('2. Create a matching user in Supabase Auth');
+        console.log('3. Create a profile record with role:', role);
       }
+      
+      return { success: true };
     } catch (err) {
       console.error('Signup error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during signup');
