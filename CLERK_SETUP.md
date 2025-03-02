@@ -83,12 +83,21 @@ After setting up Clerk, you can test the authentication by:
 4. Verifying that you're redirected to the appropriate dashboard
 5. Testing that protected routes work correctly
 
-## 10. Syncing with Supabase
+## 10. Database Migration
+
+You'll need to run a database migration to add the `clerk_id` field to your profiles table:
+
+1. Run the SQL in the `supabase/add_clerk_id_to_profiles.sql` file on your Supabase database
+2. This will:
+   - Add a `clerk_id` column to the profiles table
+   - Create indices for faster lookups 
+
+## 11. Syncing with Supabase
 
 This application uses Clerk for authentication but still uses Supabase for data storage:
 
-1. When a user authenticates with Clerk, our application checks Supabase for a matching profile
-2. If not found, it creates a new profile in Supabase with default settings
+1. When a user authenticates with Clerk, our application checks Supabase for a matching profile by email
+2. If not found, it creates a new profile in Supabase with a proper UUID and stores the Clerk ID
 3. The Supabase profile stores additional user information like role and organization
 
 ## Clerk and Supabase Integration

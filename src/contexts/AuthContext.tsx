@@ -97,15 +97,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // Create a new profile for first-time users
             const defaultRole = 'client';
             
+            // Generate a UUID for Supabase since Clerk IDs aren't compatible with UUID format
+            const uuid = crypto.randomUUID();
+            
             // We'll use metadata from Clerk to populate the profile
             const { error: insertError } = await supabase
               .from('profiles')
               .insert([
                 {
-                  id: clerkUser.id,
+                  id: uuid, // Use the generated UUID instead of Clerk ID
                   email: primaryEmail,
                   name: clerkUser.firstName || primaryEmail.split('@')[0],
                   role: defaultRole,
+                  clerk_id: clerkUser.id, // Store Clerk ID in a separate column
                   created_at: new Date().toISOString()
                 }
               ]);
@@ -168,11 +172,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // For now, just log the intent and create a profile in Supabase
         console.log('Admin creating user:', { email, name, role, organization });
         
-        // Create a profile entry (this would normally happen after Clerk user creation)
+        // Create a profile entry with a valid UUID for Supabase
+        const uuid = crypto.randomUUID();
+        
         const { data, error: profileError } = await supabase
           .from('profiles')
           .insert([
             {
+              id: uuid, // Use a valid UUID for Supabase
               email,
               name,
               role,
