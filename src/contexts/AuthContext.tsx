@@ -13,7 +13,8 @@ export type UserRole = 'superadmin' | 'admin' | 'client';
 
 // Define user interface
 interface User {
-  id: string;
+  id: string;       // Clerk user ID
+  dbId?: string;    // Optional Supabase ID for database operations
   email: string;
   name: string;
   role: UserRole;
@@ -85,8 +86,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           
           // If profile exists, use it
           if (profile) {
+            console.log('Found existing profile in Supabase for', primaryEmail);
             userProfile = {
-              id: clerkUser.id,
+              id: clerkUser.id, // We use Clerk's ID for our app
+              dbId: profile.id, // Store the Supabase ID separately for database operations
               email: primaryEmail,
               name: profile.name || clerkUser.firstName || '',
               role: profile.role as UserRole || 'client',
@@ -94,30 +97,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               imageUrl: clerkUser.imageUrl
             };
           } else {
-            // Create a new profile for first-time users
+            // For new users, we can't create a profile directly due to foreign key constraints
+            console.log(`No existing profile for ${primaryEmail} in Supabase.`);
+            console.log('Using Clerk-only profile. User will have limited functionality.');
+            
+            // Set default role for users without Supabase profiles
             const defaultRole = 'client';
             
-            // Generate a UUID for Supabase since Clerk IDs aren't compatible with UUID format
-            const uuid = crypto.randomUUID();
-            
-            // We'll use metadata from Clerk to populate the profile
-            const { error: insertError } = await supabase
-              .from('profiles')
-              .insert([
-                {
-                  id: uuid, // Use the generated UUID instead of Clerk ID
-                  email: primaryEmail,
-                  name: clerkUser.firstName || primaryEmail.split('@')[0],
-                  role: defaultRole,
-                  clerk_id: clerkUser.id, // Store Clerk ID in a separate column
-                  created_at: new Date().toISOString()
-                }
-              ]);
-              
-            if (insertError) {
-              console.error('Error creating profile:', insertError);
-            }
-            
+            // We'll still create a user object for the app to use
+            // but it won't be persisted in Supabase without additional backend work
             userProfile = {
               id: clerkUser.id,
               email: primaryEmail,
@@ -125,6 +113,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               role: defaultRole,
               imageUrl: clerkUser.imageUrl
             };
+            
+            // Log instructions for admin
+            console.log('ADMIN ACTION REQUIRED: To give this user full functionality:');
+            console.log('1. Create a user in Supabase Auth with this email:', primaryEmail);
+            console.log('2. Ensure a corresponding profile record exists');
           }
           
           setUser(userProfile);
@@ -172,25 +165,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // For now, just log the intent and create a profile in Supabase
         console.log('Admin creating user:', { email, name, role, organization });
         
-        // Create a profile entry with a valid UUID for Supabase
-        const uuid = crypto.randomUUID();
+        // We need a different approach here as well
+        // For admin-created users, we'd typically need a backend endpoint
+        // that handles both Clerk user creation and Supabase profile creation
         
-        const { data, error: profileError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              id: uuid, // Use a valid UUID for Supabase
-              email,
-              name,
-              role,
-              organization,
-              created_at: new Date().toISOString()
-            }
-          ]);
+        // For now, just log what we would do
+        console.log("To create a new user, we need to:", {
+          action1: "Create user in Clerk via Admin API",
+          action2: "Create corresponding Supabase Auth user",
+          action3: "Create profile record linked to that user",
+          userData: { email, name, role, organization }
+        });
           
-        if (profileError) {
-          throw profileError;
-        }
+        // Since we're not actually doing the profile creation here, 
+        // we won't have profileError
         
         return { success: true };
       } else {

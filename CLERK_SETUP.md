@@ -83,22 +83,38 @@ After setting up Clerk, you can test the authentication by:
 4. Verifying that you're redirected to the appropriate dashboard
 5. Testing that protected routes work correctly
 
-## 10. Database Migration
+## 10. Important Note About Database Setup
 
-You'll need to run a database migration to add the `clerk_id` field to your profiles table:
+Your Supabase database has a foreign key constraint where:
+- The `profiles` table's `id` field must reference an existing ID in the `auth.users` table
+- This means profiles can only be created for users who exist in Supabase Auth
 
-1. Run the SQL in the `supabase/add_clerk_id_to_profiles.sql` file on your Supabase database
-2. This will:
-   - Add a `clerk_id` column to the profiles table
-   - Create indices for faster lookups 
+With this hybrid Clerk + Supabase setup, there are a few ways to handle this:
 
-## 11. Syncing with Supabase
+### Option 1: For Development/Testing
+1. **Manual User Creation**: 
+   - First create users in Supabase Auth (via the UI or API)
+   - Then create matching users in Clerk with the same email address
+   - The app will link them via email
 
-This application uses Clerk for authentication but still uses Supabase for data storage:
+### Option 2: For Production
+1. **Create a Custom Users Table**:
+   - Create a new table (e.g., `clerk_users`) without foreign key constraints
+   - Store user data there instead of in the `profiles` table
+   - Modify the app to use this table
 
-1. When a user authenticates with Clerk, our application checks Supabase for a matching profile by email
-2. If not found, it creates a new profile in Supabase with a proper UUID and stores the Clerk ID
-3. The Supabase profile stores additional user information like role and organization
+2. **Use a Backend Service**:
+   - Create a backend endpoint that handles user creation in both systems
+   - When creating a user in Clerk, also create the corresponding user in Supabase Auth
+   - Then create the profile record
+
+## 11. Current Implementation
+
+The current implementation:
+1. Tries to find existing profiles by email address
+2. If found, uses the profile data along with Clerk authentication
+3. If not found, uses only Clerk data for the user
+4. Does not attempt to create new profiles automatically due to the constraint
 
 ## Clerk and Supabase Integration
 
