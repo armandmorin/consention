@@ -1,12 +1,13 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { RedirectToSignIn, SignedIn, SignedOut } from '@clerk/clerk-react';
 
 interface SuperAdminRouteProps {
   children: React.ReactNode;
 }
 
-// Basic SuperAdminRoute component - checks user role and redirects if needed
+// Enhanced SuperAdminRoute component with Clerk
 const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -20,13 +21,29 @@ const SuperAdminRoute: React.FC<SuperAdminRouteProps> = ({ children }) => {
     );
   }
   
-  // If no user or not a superadmin, redirect to login
-  if (!user || user.role !== 'superadmin') {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-  }
-  
-  // User is authenticated as superadmin, render children
-  return <>{children}</>;
+  return (
+    <>
+      {/* Use Clerk's components for auth state */}
+      <SignedIn>
+        {/* If signed in but not a superadmin, redirect to appropriate dashboard */}
+        {user && user.role !== 'superadmin' ? (
+          <Navigate 
+            to={user.role === 'admin' ? '/admin' : '/client'} 
+            state={{ from: location.pathname }} 
+            replace 
+          />
+        ) : (
+          // User is authenticated as superadmin, render children
+          <>{children}</>
+        )}
+      </SignedIn>
+      
+      {/* If not signed in, redirect to sign in */}
+      <SignedOut>
+        <RedirectToSignIn />
+      </SignedOut>
+    </>
+  );
 };
 
 export default SuperAdminRoute;

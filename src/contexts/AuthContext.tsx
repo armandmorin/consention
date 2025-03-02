@@ -1,7 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, getUserRoleFromSession } from '../lib/supabase';
-import { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import {
+  useClerk,
+  useUser,
+  useSession,
+  SignInResource
+} from '@clerk/clerk-react';
+import { supabase } from '../lib/supabase';
 
 // Define user roles
 export type UserRole = 'superadmin' | 'admin' | 'client';
@@ -13,6 +18,7 @@ interface User {
   name: string;
   role: UserRole;
   organization?: string;
+  imageUrl?: string;
 }
 
 // Define auth context interface
@@ -20,11 +26,11 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: () => void;
   logout: () => void;
-  signup: (email: string, password: string, name: string, role: UserRole, organization?: string) => Promise<void>;
-  forgotPassword: (email: string) => Promise<void>;
-  resetPassword: (token: string, newPassword: string) => Promise<void>;
+  signup: (email: string, name: string, role: UserRole, organization?: string) => Promise<any>;
+  forgotPassword: () => void;
+  resetPassword: () => void;
 }
 
 // Create the auth context
@@ -35,338 +41,180 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  
   const navigate = useNavigate();
+  const clerk = useClerk();
+  const { user: clerkUser, isLoaded: isUserLoaded } = useUser();
+  const { session, isLoaded: isSessionLoaded } = useSession();
 
-  // Simple session handling that relies on Supabase's built-in mechanisms
+  // Sync Clerk user with our app user and Supabase profiles
   useEffect(() => {
-    // Process authenticated user data after validating with server
-    const processAuthenticatedUser = async (supabaseUser: SupabaseUser) => {
-      try {
-        console.log('Processing authenticated user:', supabaseUser.id);
+    const syncUserWithProfile = async () => {
+      if (!isUserLoaded || !isSessionLoaded) return;
+      
+      // If we have a Clerk user, get or create the profile
+      if (clerkUser) {
+        setLoading(true);
         
-        // Get profile data for complete user info
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', supabaseUser.id)
-          .single();
-        
-        // Get role from JWT claims
-        const roleFromJWT = supabaseUser.app_metadata?.role;
-
-        if (profile) {
-          // Determine user role - prioritize JWT if available
-          let userRole: UserRole = 'client';
+        try {
+          // Get primary email address
+          const primaryEmail = clerkUser.primaryEmailAddress?.emailAddress;
           
-          if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
-            userRole = 'superadmin';
-          } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
-            userRole = 'admin';
+          if (!primaryEmail) {
+            console.error('User has no primary email address');
+            setError('Missing email address information');
+            setLoading(false);
+            return;
           }
           
-          // Set the user state
-          setUser({
-            id: supabaseUser.id,
-            email: supabaseUser.email || '',
-            name: profile.name || '',
-            role: userRole,
-            organization: profile.organization
-          });
-        } else {
-          // Create minimal user if no profile found
-          setUser({
-            id: supabaseUser.id,
-            email: supabaseUser.email || '',
-            name: supabaseUser.email?.split('@')[0] || 'User',
-            role: roleFromJWT as UserRole || 'client',
-            organization: null
-          });
-        }
-      } catch (err) {
-        console.error('Error processing user data:', err);
-      } finally {
-        // Always finish by turning off loading
-        setLoading(false);
-      }
-    };
-    
-    // Initial session check
-    const getInitialSession = async () => {
-      try {
-        // Start with loading state
-        setLoading(true);
-        
-        // Get the current session
-        const { data } = await supabase.auth.getSession();
-        
-        // If we have a session, process it
-        if (data.session) {
-          await processAuthenticatedUser(data.session.user);
-        } else {
-          // No active session
-          setUser(null);
+          // Try to find the user in our database
+          const { data: profile, error: fetchError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', primaryEmail)
+            .single();
+            
+          if (fetchError && fetchError.code !== 'PGRST116') { // Not found is ok for new users
+            console.error('Error fetching profile:', fetchError);
+            setError('Failed to load user profile');
+            setLoading(false);
+            return;
+          }
+          
+          let userProfile;
+          
+          // If profile exists, use it
+          if (profile) {
+            userProfile = {
+              id: clerkUser.id,
+              email: primaryEmail,
+              name: profile.name || clerkUser.firstName || '',
+              role: profile.role as UserRole || 'client',
+              organization: profile.organization,
+              imageUrl: clerkUser.imageUrl
+            };
+          } else {
+            // Create a new profile for first-time users
+            const defaultRole = 'client';
+            
+            // We'll use metadata from Clerk to populate the profile
+            const { error: insertError } = await supabase
+              .from('profiles')
+              .insert([
+                {
+                  id: clerkUser.id,
+                  email: primaryEmail,
+                  name: clerkUser.firstName || primaryEmail.split('@')[0],
+                  role: defaultRole,
+                  created_at: new Date().toISOString()
+                }
+              ]);
+              
+            if (insertError) {
+              console.error('Error creating profile:', insertError);
+            }
+            
+            userProfile = {
+              id: clerkUser.id,
+              email: primaryEmail,
+              name: clerkUser.firstName || primaryEmail.split('@')[0],
+              role: defaultRole,
+              imageUrl: clerkUser.imageUrl
+            };
+          }
+          
+          setUser(userProfile);
+        } catch (err) {
+          console.error('Error syncing user profile:', err);
+          setError('Failed to sync user profile');
+        } finally {
           setLoading(false);
         }
-      } catch (err) {
-        console.error('Error getting initial session:', err);
-        setLoading(false);
-      }
-    };
-    
-    // Run the initial session check
-    getInitialSession();
-    
-    // Set up auth state change listener for ongoing changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state change:', event);
-        
-        // Set loading true for any auth state change
-        setLoading(true);
-        
-        if (session) {
-          // We have a session, so process the user
-          await processAuthenticatedUser(session.user);
-        } else {
-          // No session, so user is logged out
-          setUser(null);
-          setLoading(false);
-        }
-      }
-    );
-    
-    // Cleanup function
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []); // Empty dependency array ensures it only runs on mount
-
-  // Simple login function
-  const login = async (email: string, password: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Authenticate with Supabase
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-      
-      if (error) {
-        setError(error.message);
-        setLoading(false);
-        return;
-      }
-      
-      if (!data.session) {
-        setError('No session returned');
-        setLoading(false);
-        return;
-      }
-      
-      // Fetch user profile
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
-      
-      // Determine user role
-      let userRole: UserRole = 'client';
-      const roleFromJWT = data.user.app_metadata?.role;
-      
-      if (profile) {
-        // Use profile data
-        if (roleFromJWT === 'superadmin' || profile.role === 'superadmin') {
-          userRole = 'superadmin';
-        } else if (roleFromJWT === 'admin' || profile.role === 'admin') {
-          userRole = 'admin';
-        }
-        
-        setUser({
-          id: data.user.id,
-          email: data.user.email || '',
-          name: profile.name || '',
-          role: userRole,
-          organization: profile.organization
-        });
       } else {
-        // No profile found
-        setUser({
-          id: data.user.id,
-          email: data.user.email || '',
-          name: email.split('@')[0],
-          role: roleFromJWT as UserRole || 'client',
-          organization: null
-        });
+        // No Clerk user means we're logged out
+        setUser(null);
+        setLoading(false);
       }
-      
-      setLoading(false);
-      
-      // Navigation will happen automatically via the useEffect in the Login component
-    } catch (err) {
-      console.error('Login failed:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred during login');
-      setLoading(false);
-    }
+    };
+    
+    syncUserWithProfile();
+  }, [clerkUser, isUserLoaded, isSessionLoaded]);
+
+  // Simplified login function that uses Clerk
+  const login = () => {
+    clerk.openSignIn();
   };
 
   // Simplified logout function
-  const logout = async () => {
-    try {
-      // Sign out from Supabase - this will clear the auth token
-      await supabase.auth.signOut();
-      // Clear local state after signout
+  const logout = () => {
+    clerk.signOut().then(() => {
+      // Clear our internal user state
       setUser(null);
-      // Navigate to login page
-      navigate('/login');
-    } catch (err) {
-      console.error('Logout error:', err);
-      // Still navigate to login if there was an error
-      navigate('/login');
-    }
+      // Navigate to login page - Clerk will automatically redirect based on config
+    });
   };
 
-  // Signup function
-  const signup = async (email: string, password: string, name: string, role: UserRole, organization?: string) => {
-    setLoading(true);
+  // Signup function can create admin users
+  const signup = async (email: string, name: string, role: UserRole, organization?: string) => {
     setError(null);
     
-    const isAdminCreatingUser = window.location.pathname.includes('/admin') || 
-                              window.location.pathname.includes('/superadmin');
+    // Are we an admin creating another user?
+    const isAdminCreatingUser = user?.role === 'admin' || user?.role === 'superadmin';
     
     try {
-      let currentUser = null;
+      // For admins creating users, we use a different flow
       if (isAdminCreatingUser) {
-        currentUser = user;
-      }
-      
-      // Create user in Supabase
-      const { data: userData, error: userError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name,
-            role,
-            organization
-          }
-        }
-      });
-      
-      if (userError) {
-        throw userError;
-      }
-      
-      if (userData.user) {
-        // Create profile record in profiles table
-        const { error: profileError } = await supabase
+        // We would use Clerk's backend API via a server endpoint to create users
+        // For now, just log the intent and create a profile in Supabase
+        console.log('Admin creating user:', { email, name, role, organization });
+        
+        // Create a profile entry (this would normally happen after Clerk user creation)
+        const { data, error: profileError } = await supabase
           .from('profiles')
           .insert([
             {
-              id: userData.user.id,
+              email,
               name,
               role,
               organization,
-              email
+              created_at: new Date().toISOString()
             }
           ]);
           
-        if (profileError && profileError.code !== '23505') { // Ignore unique_violation
+        if (profileError) {
           throw profileError;
         }
         
-        // If admin is creating a user, restore the admin's session
-        if (isAdminCreatingUser && currentUser) {
-          setUser(currentUser);
-          setLoading(false);
-          return { success: true, userId: userData.user.id };
-        }
-        
-        // Otherwise, this is self-signup
-        if (!isAdminCreatingUser) {
-          const newUser: User = {
-            id: userData.user.id,
-            email,
-            name,
-            role,
-            organization
-          };
-          
-          setUser(newUser);
-          setLoading(false);
-          
-          // Redirect based on role for self-signup
-          if (role === 'admin') {
-            navigate('/admin');
-          } else {
-            navigate('/client');
-          }
-        }
-        
-        setLoading(false);
-        return { success: true, userId: userData.user.id };
+        return { success: true };
+      } else {
+        // For self-signup, redirect to Clerk signup
+        clerk.openSignUp();
+        return { success: true };
       }
     } catch (err) {
       console.error('Signup error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during signup');
-      setLoading(false);
       return { success: false, error: err };
     }
   };
 
-  // Forgot password function
-  const forgotPassword = async (email: string) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Send password reset email using Supabase
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`
-      });
-      
-      if (error) {
-        throw error;
-      }
-      
-      navigate('/login', { state: { message: 'Password reset email sent' } });
-    } catch (err) {
-      console.error('Password reset error:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred sending password reset');
-    } finally {
-      setLoading(false);
-    }
+  // Simplified forgot password function
+  const forgotPassword = () => {
+    clerk.openSignIn({
+      initialPage: 'forgot-password'
+    });
   };
 
-  // Reset password function
-  const resetPassword = async (token: string, newPassword: string) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Update user password using Supabase
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword
-      });
-      
-      if (error) {
-        throw error;
-      }
-      
-      navigate('/login', { state: { message: 'Password reset successful' } });
-    } catch (err) {
-      console.error('Reset password error:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred during password reset');
-    } finally {
-      setLoading(false);
-    }
+  // Reset password just opens the Clerk flow
+  const resetPassword = () => {
+    clerk.openUserProfile({
+      initialPage: 'security'
+    });
   };
 
   const value = {
     user,
-    loading,
+    loading: loading || !isUserLoaded || !isSessionLoaded,
     error,
     login,
     logout,

@@ -1,72 +1,49 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { RedirectToSignIn, SignedIn, SignedOut } from '@clerk/clerk-react';
 
 interface AdminRouteProps {
   children: React.ReactNode;
 }
 
-// Direct AdminRoute component that doesn't rely on loading state
+// Enhanced AdminRoute component with Clerk
 const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const location = useLocation();
-  const [directAccess, setDirectAccess] = useState<boolean | null>(null);
   
-  // Perform a direct session check without going through Auth context
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        // If we already have a user with admin role from context, don't bother checking
-        if (user?.role === 'admin' || user?.role === 'superadmin') {
-          return;
-        }
-        
-        // Get session directly from Supabase
-        const { data } = await supabase.auth.getSession();
-        
-        if (data?.session) {
-          // Check for admin access
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', data.session.user.id)
-            .single();
-            
-          if (profile?.role === 'admin' || profile?.role === 'superadmin' || 
-              data.session.user.app_metadata?.role === 'admin' || 
-              data.session.user.app_metadata?.role === 'superadmin') {
-            setDirectAccess(true);
-            return;
-          }
-        }
-        
-        setDirectAccess(false);
-      } catch (err) {
-        setDirectAccess(false);
-      }
-    };
-    
-    checkSession();
-  }, [user]);
-  
-  // If we have a user with admin/superadmin role from context, render children
-  if (user?.role === 'admin' || user?.role === 'superadmin') {
-    return <>{children}</>;
+  // While authentication is being checked, show loading spinner
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-100">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+      </div>
+    );
   }
   
-  // If we've confirmed direct access, render children
-  if (directAccess) {
-    return <>{children}</>;
-  }
-  
-  // If we've confirmed no access, redirect
-  if (directAccess === false && user?.role !== 'admin' && user?.role !== 'superadmin') {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-  }
-  
-  // While checking, render a blank component
-  return null;
+  return (
+    <>
+      {/* Use Clerk's components for auth state */}
+      <SignedIn>
+        {/* If signed in but not an admin or superadmin, redirect to client dashboard */}
+        {user && user.role !== 'admin' && user.role !== 'superadmin' ? (
+          <Navigate 
+            to="/client" 
+            state={{ from: location.pathname }} 
+            replace 
+          />
+        ) : (
+          // User is authenticated as admin or superadmin, render children
+          <>{children}</>
+        )}
+      </SignedIn>
+      
+      {/* If not signed in, redirect to sign in */}
+      <SignedOut>
+        <RedirectToSignIn />
+      </SignedOut>
+    </>
+  );
 };
 
 export default AdminRoute;
